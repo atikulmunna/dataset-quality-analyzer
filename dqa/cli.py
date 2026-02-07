@@ -112,7 +112,7 @@ def _fails_threshold(findings: Iterable[Finding], fail_on: str) -> bool:
 
 
 def _serialize_finding(finding: Finding) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "id": finding.id,
         "severity": finding.severity,
         "split": finding.split,
@@ -124,6 +124,8 @@ def _serialize_finding(finding: Finding) -> dict[str, object]:
         "suggested_action": finding.suggested_action,
         "fingerprint": finding.fingerprint,
     }
+    # Keep required fields and drop optional keys when value is None.
+    return {k: v for k, v in payload.items() if v is not None}
 
 
 def _empty_check() -> dict[str, object]:
@@ -548,6 +550,7 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as exc:
         print(f"runtime error: {exc}", file=sys.stderr)
         return 3
+
 
 
 

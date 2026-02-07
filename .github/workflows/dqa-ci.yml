@@ -1,0 +1,95 @@
+name: dqa-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      fail_on:
+        description: "DQA fail threshold"
+        required: false
+        default: "high"
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pyyaml jsonschema
+
+      - name: Run tests
+        run: pytest -q
+
+  dqa-gate:
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml jsonschema
+
+      - name: Build smoke dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64
+
+          root = Path('.ci/smoke')
+          (root / 'train' / 'images').mkdir(parents=True, exist_ok=True)
+          (root / 'train' / 'labels').mkdir(parents=True, exist_ok=True)
+
+          # 1x1 transparent PNG
+          png_b64 = (
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII='
+          )
+          (root / 'train' / 'images' / 'sample.png').write_bytes(base64.b64decode(png_b64))
+          (root / 'train' / 'labels' / 'sample.txt').write_text('0 0.5 0.5 0.2 0.2\n', encoding='utf-8')
+          (root / 'data.yaml').write_text(
+              'path: .ci/smoke\ntrain: train/images\nval: train/images\nnames: [object]\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Run DQA audit gate
+        env:
+          DQA_FAIL_ON: ${{ github.event.inputs.fail_on || 'high' }}
+        run: |
+          python -m dqa audit \
+            --data .ci/smoke/data.yaml \
+            --out runs/ci_smoke \
+            --config dqa.yaml \
+            --fail-on "$DQA_FAIL_ON"
+
+      - name: Validate artifacts against schemas
+        run: |
+          python -m dqa validate --artifact runs/ci_smoke/summary.json --schema schemas/summary.schema.json
+          python -m dqa validate --artifact runs/ci_smoke/flags.json --schema schemas/flags.schema.json
+
+      - name: Explain run summary
+        run: python -m dqa explain --run runs/ci_smoke
+
+      - name: Upload DQA artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dqa-ci-smoke
+          path: runs/ci_smoke

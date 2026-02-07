@@ -425,3 +425,21 @@ python -m dqa audit --data-url "https://app.roboflow.com/workspace/project/1" --
 
 
 
+
+## CI Workflow Gate
+
+GitHub Actions workflow: `.github/workflows/dqa-ci.yml`
+
+What it does on every push/PR:
+
+- Runs `pytest -q`
+- Builds a tiny smoke dataset in CI
+- Runs `python -m dqa audit` with a severity gate
+- Validates `summary.json` and `flags.json` against schemas
+- Uploads `runs/ci_smoke` as an artifact
+
+Manual run:
+
+- Use **Actions -> dqa-ci -> Run workflow**
+- Optional input: `fail_on` (`critical|high|medium|low`, default `high`)
+
