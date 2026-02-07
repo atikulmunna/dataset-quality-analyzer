@@ -1,0 +1,34 @@
+version: 1
+
+# Low-noise segmentation preset:
+# keeps structural/data-split quality checks and disables bbox-derived heuristics.
+fail_on: high
+
+checks:
+  integrity:
+    enabled: true
+
+  class_distribution:
+    enabled: true
+    min_instances_per_class_warn: 20
+    max_class_share_warn: 0.90
+    split_drift_jsd_warn: 0.15
+    split_drift_jsd_high: 0.30
+
+  bbox_sanity:
+    enabled: false
+    min_box_area_ratio_warn: 0.00001
+    max_box_area_ratio_warn: 0.98
+    max_boxes_per_image_warn: 1200
+    aspect_ratio_warn: 80.0
+
+  duplicates:
+    enabled: true
+
+  near_duplicates:
+    enabled: false
+    phash_hamming_threshold: 8
+
+  leakage:
+    enabled: true
+    include_near_dup: false

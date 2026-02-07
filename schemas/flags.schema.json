@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/dqa/schemas/flags.schema.json",
+  "title": "DQA Flags",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "findings"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version for flags artifact, e.g. 1.0.0"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "severity", "message", "fingerprint"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": [
+            "INTEGRITY_MISSING_LABEL",
+            "INTEGRITY_ORPHAN_LABEL",
+            "INTEGRITY_INVALID_CLASS_ID",
+            "INTEGRITY_MALFORMED_ROW",
+            "INTEGRITY_COORD_OUT_OF_RANGE",
+            "INTEGRITY_CORRUPT_IMAGE",
+            "CLASS_IMBALANCE_HIGH",
+            "CLASS_LOW_SUPPORT",
+            "CLASS_SPLIT_DRIFT",
+            "BBOX_TINY_BOX",
+            "BBOX_OVERSIZED_BOX",
+            "BBOX_EXTREME_ASPECT_RATIO",
+            "BBOX_TOO_MANY_PER_IMAGE",
+            "DUPLICATE_WITHIN_SPLIT",
+            "DUPLICATE_ACROSS_SPLITS",
+            "NEAR_DUPLICATE_WITHIN_SPLIT",
+            "NEAR_DUPLICATE_ACROSS_SPLITS",
+            "LEAKAGE_EXACT_TRAIN_VAL",
+            "LEAKAGE_EXACT_TRAIN_TEST",
+            "LEAKAGE_NEAR_TRAIN_VAL",
+            "LEAKAGE_NEAR_TRAIN_TEST"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        },
+        "split": {
+          "type": "string",
+          "enum": ["train", "val", "test"]
+        },
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "class_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metrics": {
+          "type": "object"
+        },
+        "suggested_action": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+version: 1
+
+# Keep CI fail behavior strict only for high/critical by default.
+fail_on: high
+
+checks:
+  integrity:
+    enabled: true
+
+  class_distribution:
+    enabled: true
+    # Segmentation datasets often have sparse tail classes.
+    min_instances_per_class_warn: 20
+    max_class_share_warn: 0.90
+    split_drift_jsd_warn: 0.15
+    split_drift_jsd_high: 0.30
+
+  bbox_sanity:
+    enabled: true
+    # Relaxed thresholds because boxes are derived from polygons.
+    min_box_area_ratio_warn: 0.00001
+    max_box_area_ratio_warn: 0.98
+    max_boxes_per_image_warn: 1200
+    aspect_ratio_warn: 80.0
+
+  duplicates:
+    enabled: true
+
+  near_duplicates:
+    enabled: false
+    phash_hamming_threshold: 8
+
+  leakage:
+    enabled: true
+    include_near_dup: false

@@ -1,0 +1,27 @@
+version: 1
+
+fail_on: high
+
+checks:
+  integrity:
+    enabled: true
+  class_distribution:
+    enabled: true
+    min_instances_per_class_warn: 50
+    max_class_share_warn: 0.80
+    split_drift_jsd_warn: 0.10
+    split_drift_jsd_high: 0.20
+  bbox_sanity:
+    enabled: true
+    min_box_area_ratio_warn: 0.0001
+    max_box_area_ratio_warn: 0.90
+    max_boxes_per_image_warn: 300
+    aspect_ratio_warn: 20.0
+  duplicates:
+    enabled: true
+  near_duplicates:
+    enabled: false
+    phash_hamming_threshold: 8
+  leakage:
+    enabled: true
+    include_near_dup: false

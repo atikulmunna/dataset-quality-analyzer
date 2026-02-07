@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/dqa/schemas/summary.schema.json",
+  "title": "DQA Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run", "dataset", "checks", "totals"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version for summary artifact, e.g. 1.0.0"
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "dqa_version", "started_at", "finished_at", "duration_sec", "config"],
+      "properties": {
+        "run_id": { "type": "string", "minLength": 1 },
+        "dqa_version": { "type": "string", "minLength": 1 },
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "duration_sec": { "type": "number", "minimum": 0 },
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fail_on", "enabled_checks"],
+          "properties": {
+            "fail_on": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+            "enabled_checks": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data_yaml", "root", "splits", "classes"],
+      "properties": {
+        "data_yaml": { "type": "string", "minLength": 1 },
+        "root": { "type": "string", "minLength": 1 },
+        "splits": {
+          "type": "object",
+          "propertyNames": { "type": "string", "enum": ["train", "val", "test"] },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["images", "labeled", "unlabeled"],
+            "properties": {
+              "images": { "type": "integer", "minimum": 0 },
+              "labeled": { "type": "integer", "minimum": 0 },
+              "unlabeled": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "classes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count", "names"],
+          "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "names": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "counts"],
+        "properties": {
+          "status": { "type": "string", "enum": ["completed", "skipped", "failed"] },
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["critical", "high", "medium", "low"],
+            "properties": {
+              "critical": { "type": "integer", "minimum": 0 },
+              "high": { "type": "integer", "minimum": 0 },
+              "medium": { "type": "integer", "minimum": 0 },
+              "low": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findings", "by_severity", "fail_threshold", "build_failed"],
+      "properties": {
+        "findings": { "type": "integer", "minimum": 0 },
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["critical", "high", "medium", "low"],
+          "properties": {
+            "critical": { "type": "integer", "minimum": 0 },
+            "high": { "type": "integer", "minimum": 0 },
+            "medium": { "type": "integer", "minimum": 0 },
+            "low": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "fail_threshold": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+        "build_failed": { "type": "boolean" }
+      }
+    }
+  }
+}
