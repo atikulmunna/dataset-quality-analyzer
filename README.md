@@ -276,41 +276,6 @@ Correct usage:
 ```powershell
 python -m dqa audit --data "C:\path\to\data.yaml" --out "runs\dqa_low" --config "dqa.yaml" --fail-on low
 ```
-
-## Future Robustness Features
-
-High-impact additions to make DQA more production robust:
-
-1. Direct remote dataset ingestion
-- Add support for `--data-url` (HTTP/S) and provider adapters.
-- Roboflow support: accept project/version links, authenticate via API key, download export, audit locally, clean temp files.
-
-2. Roboflow-native command
-- Example target UX:
-  - `dqa audit --roboflow-workspace ws --roboflow-project dice --roboflow-version 2 --format yolov11 --out runs/dqa_rf`
-- Add `ROBOFLOW_API_KEY` env var support and clear errors for auth/rate limits.
-
-3. Schema validation mode
-- `dqa validate --artifact runs/x/summary.json --schema schemas/summary.schema.json`
-- Useful for CI contract enforcement.
-
-4. Dataset-to-dataset diff mode
-- `dqa diff --old runs/a --new runs/b`
-- Show regressions in leakage, imbalance, and integrity findings.
-
-5. Better CI integration
-- GitHub Action template, PR annotations, and Markdown summary generation.
-
-6. Better explainability
-- Per-flag remediation hints and class-wise drilldowns in HTML report.
-
-7. Scale and reliability
-- Incremental index cache reuse by file hash.
-- Chunked hashing and optional multiprocessing for large datasets.
-
-8. Advanced quality checks
-- Image quality signals (blur, exposure, resolution outliers).
-- Annotation overlap/pathology checks (crowded boxes, improbable distributions).
 ## Remote Cache Controls
 
 DQA reuses extracted remote exports under `--out/_remote` by default.
