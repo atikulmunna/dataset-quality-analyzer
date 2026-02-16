@@ -63,6 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
     explain.add_argument("--run", type=Path, default=None, help="Run directory containing summary.json and flags.json")
     explain.add_argument("--summary", type=Path, default=None, help="Path to summary.json")
     explain.add_argument("--flags", type=Path, default=None, help="Path to flags.json")
+    explain.add_argument("--format", choices=["text", "markdown", "json"], default="text", help="Explain output format")
+    explain.add_argument("--out-file", type=Path, default=None, help="Optional output file for explain content")
 
     validate = subparsers.add_parser("validate", help="Validate a DQA JSON artifact against a JSON schema")
     validate.add_argument("--artifact", required=True, type=Path, help="Path to artifact JSON (e.g., summary.json)")
@@ -176,6 +178,11 @@ def run_explain(args: argparse.Namespace) -> int:
         flags_path = args.flags
         run_label = f"summary={summary_path.as_posix()} flags={flags_path.as_posix()}"
 
+    output_format = str(getattr(args, "format", "text")).lower()
+    out_file = getattr(args, "out_file", None)
+    if output_format not in {"text", "markdown", "json"}:
+        raise ExplainError(f"Unsupported explain format: {output_format}")
+
     summary = _load_json(summary_path, "summary.json")
     flags = _load_json(flags_path, "flags.json")
 
@@ -191,49 +198,98 @@ def run_explain(args: argparse.Namespace) -> int:
     finding_rows = [f for f in findings if isinstance(f, dict)]
     id_counts = Counter(str(f.get("id", "UNKNOWN")) for f in finding_rows)
 
-    print("DQA Explain")
-    print(f"run={run_label}")
-    print(f"findings={len(finding_rows)} build_failed={totals.get('build_failed')}")
-    print(
-        "severity: "
-        f"critical={by_severity.get('critical', 0)} "
-        f"high={by_severity.get('high', 0)} "
-        f"medium={by_severity.get('medium', 0)} "
-        f"low={by_severity.get('low', 0)}"
-    )
-
-    if not finding_rows:
-        print("No findings. Dataset quality checks passed with clean outputs.")
-        return 0
-
-    print("Top Finding IDs:")
-    for finding_id, count in id_counts.most_common(5):
-        print(f"- {finding_id}: {count}")
-
+    top_finding_ids = id_counts.most_common(5)
     critical_or_high = [f for f in finding_rows if str(f.get("severity", "")).lower() in {"critical", "high"}]
     medium_rows = [f for f in finding_rows if str(f.get("severity", "")).lower() == "medium"]
 
-    print("Action Priority:")
-    if critical_or_high:
-        top_ids = Counter(str(f.get("id", "UNKNOWN")) for f in critical_or_high).most_common(3)
-        for finding_id, _count in top_ids:
-            print(f"- {finding_id}: {_recommendation_for_id(finding_id)}")
-    elif medium_rows:
-        top_ids = Counter(str(f.get("id", "UNKNOWN")) for f in medium_rows).most_common(3)
-        for finding_id, _count in top_ids:
-            print(f"- {finding_id}: {_recommendation_for_id(finding_id)}")
-    else:
-        top_ids = Counter(str(f.get("id", "UNKNOWN")) for f in finding_rows).most_common(3)
-        if set(fid for fid, _ in top_ids) == {"CLASS_LOW_SUPPORT"}:
-            print("- Low-severity only: increase samples for under-supported classes to improve robustness.")
+    action_priority: list[str] = []
+    if finding_rows:
+        if critical_or_high:
+            top_ids = Counter(str(f.get("id", "UNKNOWN")) for f in critical_or_high).most_common(3)
+            action_priority.extend([f"{finding_id}: {_recommendation_for_id(finding_id)}" for finding_id, _ in top_ids])
+        elif medium_rows:
+            top_ids = Counter(str(f.get("id", "UNKNOWN")) for f in medium_rows).most_common(3)
+            action_priority.extend([f"{finding_id}: {_recommendation_for_id(finding_id)}" for finding_id, _ in top_ids])
         else:
-            for finding_id, _count in top_ids:
-                print(f"- {finding_id}: {_recommendation_for_id(finding_id)}")
+            top_ids = Counter(str(f.get("id", "UNKNOWN")) for f in finding_rows).most_common(3)
+            if set(fid for fid, _ in top_ids) == {"CLASS_LOW_SUPPORT"}:
+                action_priority.append("Low-severity only: increase samples for under-supported classes to improve robustness.")
+            else:
+                action_priority.extend([f"{finding_id}: {_recommendation_for_id(finding_id)}" for finding_id, _ in top_ids])
+
+    payload = {
+        "title": "DQA Explain",
+        "run": run_label,
+        "findings": len(finding_rows),
+        "build_failed": totals.get("build_failed"),
+        "severity": {
+            "critical": by_severity.get("critical", 0),
+            "high": by_severity.get("high", 0),
+            "medium": by_severity.get("medium", 0),
+            "low": by_severity.get("low", 0),
+        },
+        "top_finding_ids": [{"id": finding_id, "count": count} for finding_id, count in top_finding_ids],
+        "action_priority": action_priority,
+    }
+
+    if output_format == "json":
+        output_text = json.dumps(payload, indent=2)
+    elif output_format == "markdown":
+        lines = [
+            "# DQA Explain",
+            f"- run: `{run_label}`",
+            f"- findings: **{len(finding_rows)}**",
+            f"- build_failed: **{totals.get('build_failed')}**",
+            "",
+            "## Severity",
+            f"- critical: {by_severity.get('critical', 0)}",
+            f"- high: {by_severity.get('high', 0)}",
+            f"- medium: {by_severity.get('medium', 0)}",
+            f"- low: {by_severity.get('low', 0)}",
+            "",
+        ]
+        if finding_rows:
+            lines.append("## Top Finding IDs")
+            for finding_id, count in top_finding_ids:
+                lines.append(f"- `{finding_id}`: {count}")
+            lines.append("")
+            lines.append("## Action Priority")
+            for action in action_priority:
+                lines.append(f"- {action}")
+        else:
+            lines.append("No findings. Dataset quality checks passed with clean outputs.")
+        output_text = "\n".join(lines)
+    else:
+        lines = [
+            "DQA Explain",
+            f"run={run_label}",
+            f"findings={len(finding_rows)} build_failed={totals.get('build_failed')}",
+            (
+                "severity: "
+                f"critical={by_severity.get('critical', 0)} "
+                f"high={by_severity.get('high', 0)} "
+                f"medium={by_severity.get('medium', 0)} "
+                f"low={by_severity.get('low', 0)}"
+            ),
+        ]
+        if not finding_rows:
+            lines.append("No findings. Dataset quality checks passed with clean outputs.")
+        else:
+            lines.append("Top Finding IDs:")
+            for finding_id, count in top_finding_ids:
+                lines.append(f"- {finding_id}: {count}")
+            lines.append("Action Priority:")
+            for action in action_priority:
+                lines.append(f"- {action}")
+        output_text = "\n".join(lines)
+
+    if out_file is not None:
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        out_file.write_text(output_text + "\n", encoding="utf-8")
+    else:
+        print(output_text)
 
     return 0
-
-
-
 
 def _extract_summary_counts(summary: dict, findings: list[dict]) -> tuple[dict[str, int], int]:
     totals = summary.get("totals", {})
@@ -550,6 +606,7 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as exc:
         print(f"runtime error: {exc}", file=sys.stderr)
         return 3
+
 
 
 
