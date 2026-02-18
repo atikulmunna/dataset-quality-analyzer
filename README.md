@@ -409,3 +409,81 @@ Manual run:
 - Optional input: `fail_on` (`critical|high|medium|low`, default `high`)
 
 
+
+## Web Dashboard
+
+If you prefer not to use terminal commands, use the local web dashboard.
+
+Start it from repo root:
+
+```powershell
+python web_dashboard.py
+```
+
+Open:
+
+- `http://127.0.0.1:8787`
+
+What it supports:
+
+- Audit dataset (`dqa audit`)
+- Explain findings (`dqa explain`)
+- Validate artifact schemas (`dqa validate`)
+- Diff runs (`dqa diff`)
+
+Typical flow in UI:
+
+1. Run **Audit** with local `data.yaml` or remote `data-url`.
+2. Run **Explain** on the produced run folder.
+3. Run **Validate** on `summary.json` and `flags.json`.
+4. Run **Diff** between old/new runs for regression tracking.
+
+Notes:
+
+- Dashboard executes commands locally in this repository.
+- Keep it local-only (default bind `127.0.0.1`).
+- For Roboflow URL ingestion, set API key in the form or environment.
+
+## Segmentation Case Study (Real Run)
+
+This project was validated on a real COCO segmentation dataset with two configs to quantify noise reduction.
+
+### Run A (generic config)
+
+- Command: `python -m dqa audit --data "C:\Users\Munna\Downloads\Road segmentation.v1i.coco-segmentation" --out "runs/web_audit_raw" --config "dqa.yaml"`
+- Result: `findings=67725`, `build_failed=False`
+
+### Run B (segmentation-tuned config)
+
+- Command: `python -m dqa audit --data "C:\Users\Munna\Downloads\Road segmentation.v1i.coco-segmentation" --out "runs/web_audit_seg" --config "dqa_seg.yaml"`
+- Result: `findings=1524`, `build_failed=False`
+
+### Diff (A -> B)
+
+- Command: `python -m dqa diff --old "runs/web_audit_raw" --new "runs/web_audit_seg"`
+- Result highlights:
+  - Total delta: `-66201`
+  - Medium delta: `-66196`
+  - Low delta: `-5`
+  - No regressions
+  - Largest improvements: `BBOX_TINY_BOX`, `BBOX_EXTREME_ASPECT_RATIO`, `BBOX_OVERSIZED_BOX`
+
+Recommended policy for segmentation datasets:
+
+- Default to `dqa_seg.yaml`
+- If polygon-derived bbox noise is still too high, use `dqa_seg_low_noise.yaml`
+- Keep CI gate at `high` (or `critical`) for segmentation-heavy projects
+
+## Dashboard Walkthrough (Screenshots)
+
+### 1) Audit Dataset
+
+![Audit dataset screen](assets/audit_dataset.png)
+
+### 2) Explain Findings
+
+![Explain findings screen](assets/explain_findings.png)
+
+### 3) Diff Runs (Regression/Improvement)
+
+![Diff runs screen](assets/diff_runs.png)
