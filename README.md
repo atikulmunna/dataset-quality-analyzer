@@ -412,6 +412,10 @@ Manual run:
 
 ## Web Dashboard
 
+![Web dashboard](assets/web_dashboard.png)
+
+
+
 If you prefer not to use terminal commands, use the local web dashboard.
 
 Start it from repo root:
@@ -487,3 +491,4 @@ Recommended policy for segmentation datasets:
 ### 3) Diff Runs (Regression/Improvement)
 
 ![Diff runs screen](assets/diff_runs.png)
+
