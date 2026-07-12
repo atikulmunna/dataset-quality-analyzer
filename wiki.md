@@ -21,6 +21,7 @@ Dataset content is read-only. Generated outputs and remote download caches live 
 |---|---|
 | `dqa/cli.py` | Argument parsing, command presentation, and exit-code mapping |
 | `dqa/audit.py` | Typed audit service shared by CLI and future workers |
+| `dqa/web/` | Production request boundary, asynchronous job contract, and ownership checks |
 | `dqa/config.py` | Strict configuration parsing and validation |
 | `dqa/io_yolo.py` | YOLO `data.yaml` and split resolution |
 | `dqa/indexer.py` | YOLO/COCO parsing, image metadata, hashes, and deterministic index |
@@ -31,6 +32,18 @@ Dataset content is read-only. Generated outputs and remote download caches live 
 | `schemas/` | JSON output schemas |
 | `tests/` | Unit and integration coverage |
 | `web_dashboard.py` | Local-only convenience UI |
+
+## Production request boundary
+
+The production web path is intentionally separate from `web_dashboard.py`. `dqa.web.api.handle_request` accepts API Gateway-style requests and delegates to `JobService`. A submission:
+
+1. derives ownership from authenticated JWT claims;
+2. validates an owner-scoped object-storage ZIP key and fixed audit options;
+3. persists a `queued` job record;
+4. submits that record to a queue adapter; and
+5. returns HTTP `202` without importing or running the audit pipeline.
+
+Job states are `queued`, `running`, `succeeded`, `failed`, `cancelled`, and `expired`. AWS-specific storage and queue adapters are deliberately deferred to the infrastructure phase.
 
 ## Invariants
 
