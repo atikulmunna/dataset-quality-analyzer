@@ -28,7 +28,9 @@ class FixedWindowRateLimiter:
         self._counter = counter
         self._policies = policies or {
             "POST jobs": RateLimitPolicy(requests=5, window_seconds=60),
+            "POST uploads": RateLimitPolicy(requests=5, window_seconds=60),
             "GET jobs": RateLimitPolicy(requests=60, window_seconds=60),
+            "DELETE jobs": RateLimitPolicy(requests=5, window_seconds=60),
         }
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 

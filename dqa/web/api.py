@@ -4,7 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from .jobs import JobInputError, JobQuotaError, JobRequest, JobService
+from .jobs import IdempotencyConflictError, JobInputError, JobQuotaError, JobRequest, JobService
+from .lifecycle import JobLifecycle
 
 
 @dataclass(frozen=True)
@@ -30,8 +31,13 @@ class ApiResponse:
         }
 
 
-def handle_request(event: dict[str, Any], jobs: JobService, rate_limiter: RateLimiter) -> dict[str, object]:
-    auth = _auth_context(event)
+def handle_request(
+    event: dict[str, Any],
+    jobs: JobService,
+    rate_limiter: RateLimiter,
+    lifecycle: JobLifecycle | None = None,
+) -> dict[str, object]:
+    auth = auth_context(event)
     if auth is None:
         jobs.record_event("request.authenticate", "denied", reason="missing_subject")
         return ApiResponse(401, {"error": "unauthorized"}).to_lambda()
@@ -49,13 +55,16 @@ def handle_request(event: dict[str, Any], jobs: JobService, rate_limiter: RateLi
     if method == "POST" and path == "/jobs":
         try:
             payload = _json_body(event)
+            idempotency_key = _idempotency_key(event)
             request = JobRequest(
                 dataset_key=_required_string(payload, "dataset_key"),
                 preset=payload.get("preset", "detection"),
                 fail_on=payload.get("fail_on", "high"),
                 near_duplicates=payload.get("near_duplicates", False),
             )
-            job = jobs.submit(auth.owner_id, request)
+            job = jobs.submit(auth.owner_id, request, idempotency_key=idempotency_key)
+        except IdempotencyConflictError as exc:
+            return ApiResponse(409, {"error": "idempotency_conflict", "message": str(exc)}).to_lambda()
         except JobQuotaError as exc:
             return ApiResponse(429, {"error": "quota_exceeded", "message": str(exc)}).to_lambda()
         except (JobInputError, TypeError, ValueError) as exc:
@@ -73,10 +82,21 @@ def handle_request(event: dict[str, Any], jobs: JobService, rate_limiter: RateLi
             return ApiResponse(404, {"error": "not_found"}).to_lambda()
         return ApiResponse(200, {"job": job.to_dict()}).to_lambda()
 
+    if method == "DELETE" and path.startswith("/jobs/"):
+        job_id = path.removeprefix("/jobs/")
+        if not job_id or "/" in job_id:
+            return ApiResponse(404, {"error": "not_found"}).to_lambda()
+        if lifecycle is None:
+            return ApiResponse(503, {"error": "cancellation_unavailable"}).to_lambda()
+        job = lifecycle.request_cancel(auth.owner_id, job_id)
+        if job is None:
+            return ApiResponse(404, {"error": "not_found"}).to_lambda()
+        return ApiResponse(202, {"job": job.to_dict()}).to_lambda()
+
     return ApiResponse(404, {"error": "not_found"}).to_lambda()
 
 
-def _auth_context(event: dict[str, Any]) -> AuthContext | None:
+def auth_context(event: dict[str, Any]) -> AuthContext | None:
     claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
     subject = claims.get("sub") if isinstance(claims, dict) else None
     if not isinstance(subject, str) or not subject:
@@ -107,4 +127,14 @@ def _required_string(payload: dict[str, Any], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value:
         raise JobInputError(f"{key} is required.")
+    return value
+
+
+def _idempotency_key(event: dict[str, Any]) -> str:
+    headers = event.get("headers", {})
+    if not isinstance(headers, dict):
+        raise JobInputError("Idempotency-Key header is required.")
+    value = next((item for key, item in headers.items() if str(key).lower() == "idempotency-key"), None)
+    if not isinstance(value, str) or not value:
+        raise JobInputError("Idempotency-Key header is required.")
     return value

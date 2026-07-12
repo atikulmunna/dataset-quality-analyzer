@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import re
 from typing import Callable, Literal, Protocol
@@ -18,6 +18,10 @@ class JobInputError(ValueError):
 
 class JobQuotaError(RuntimeError):
     """Raised when an atomic per-owner job quota rejects a submission."""
+
+
+class IdempotencyConflictError(RuntimeError):
+    """Raised when an idempotency key is reused for a different request."""
 
 
 @dataclass(frozen=True)
@@ -40,9 +44,34 @@ class JobRecord:
     created_at: str
     updated_at: str
     error_code: str | None = None
+    attempt: int = 0
+    max_attempts: int = 3
+    version: int = 0
+    worker_id: str | None = None
+    lease_until: str | None = None
+    cancel_requested: bool = False
+    result_prefix: str | None = None
+    completed_at: str | None = None
+    idempotency_key: str | None = None
+    execution_started_at: str | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {key: value for key, value in asdict(self).items() if value is not None}
+        payload: dict[str, object | None] = {
+            "job_id": self.job_id,
+            "owner_id": self.owner_id,
+            "status": self.status,
+            "dataset_key": self.dataset_key,
+            "preset": self.preset,
+            "fail_on": self.fail_on,
+            "near_duplicates": self.near_duplicates,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "error_code": self.error_code,
+            "cancel_requested": self.cancel_requested,
+            "result_prefix": self.result_prefix,
+            "completed_at": self.completed_at,
+        }
+        return {key: value for key, value in payload.items() if value is not None}
 
 
 @dataclass(frozen=True)
@@ -56,7 +85,14 @@ class SecurityEvent:
 
 
 class JobStore(Protocol):
-    def create_if_within_quota(self, job: JobRecord, *, max_queued: int, max_running: int) -> bool: ...
+    def create_or_get_within_quota(
+        self,
+        job: JobRecord,
+        *,
+        idempotency_key: str | None,
+        max_queued: int,
+        max_running: int,
+    ) -> JobRecord | None: ...
 
     def get(self, job_id: str) -> JobRecord | None: ...
 
@@ -91,8 +127,10 @@ class JobService:
         self._max_queued = max_queued_per_owner
         self._max_running = max_running_per_owner
 
-    def submit(self, owner_id: str, request: JobRequest) -> JobRecord:
+    def submit(self, owner_id: str, request: JobRequest, *, idempotency_key: str | None = None) -> JobRecord:
         self._validate(owner_id, request)
+        if idempotency_key is not None and not re.fullmatch(r"[A-Za-z0-9._:-]{8,128}", idempotency_key):
+            raise JobInputError("Idempotency-Key is invalid.")
         now = self._clock().astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         job = JobRecord(
             job_id=self._id_factory(),
@@ -104,15 +142,28 @@ class JobService:
             near_duplicates=request.near_duplicates,
             created_at=now,
             updated_at=now,
+            idempotency_key=idempotency_key,
         )
-        created = self._store.create_if_within_quota(
+        stored = self._store.create_or_get_within_quota(
             job,
+            idempotency_key=idempotency_key,
             max_queued=self._max_queued,
             max_running=self._max_running,
         )
-        if not created:
+        if stored is None:
             self.record_event("job.submit", "denied", owner_id=owner_id, reason="quota_exceeded")
             raise JobQuotaError("Active job quota exceeded.")
+        if stored.job_id != job.job_id:
+            if (
+                stored.dataset_key != request.dataset_key
+                or stored.preset != request.preset
+                or stored.fail_on != request.fail_on
+                or stored.near_duplicates != request.near_duplicates
+            ):
+                self.record_event("job.submit", "denied", owner_id=owner_id, reason="idempotency_conflict")
+                raise IdempotencyConflictError("Idempotency-Key was already used for a different request.")
+            self.record_event("job.submit", "allowed", owner_id=owner_id, job_id=stored.job_id, reason="idempotent_replay")
+            return stored
         try:
             self._queue.submit(job)
         except Exception:

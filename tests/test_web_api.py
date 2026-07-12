@@ -6,28 +6,54 @@ from typing import get_args, get_type_hints
 
 from dqa.web.api import handle_request
 from dqa.web.jobs import JobRecord, JobRequest, JobService, SecurityEvent
+from dqa.web.lifecycle import JobLifecycle
 
 
 class MemoryStore:
     def __init__(self) -> None:
         self.jobs: dict[str, JobRecord] = {}
 
-    def create_if_within_quota(self, job: JobRecord, *, max_queued: int, max_running: int) -> bool:
+    def create_or_get_within_quota(
+        self,
+        job: JobRecord,
+        *,
+        idempotency_key: str | None,
+        max_queued: int,
+        max_running: int,
+    ) -> JobRecord | None:
+        if idempotency_key is not None:
+            existing = next(
+                (
+                    item
+                    for item in self.jobs.values()
+                    if item.owner_id == job.owner_id and item.idempotency_key == idempotency_key
+                ),
+                None,
+            )
+            if existing is not None:
+                return existing
         if job.job_id in self.jobs:
             raise RuntimeError("duplicate")
         owned = [item for item in self.jobs.values() if item.owner_id == job.owner_id]
         if sum(item.status == "queued" for item in owned) >= max_queued:
-            return False
+            return None
         if sum(item.status == "running" for item in owned) >= max_running:
-            return False
+            return None
         self.jobs[job.job_id] = job
-        return True
+        return job
 
     def get(self, job_id: str) -> JobRecord | None:
         return self.jobs.get(job_id)
 
     def replace(self, job: JobRecord) -> None:
         self.jobs[job.job_id] = job
+
+    def compare_and_swap(self, expected_version: int, replacement: JobRecord) -> bool:
+        current = self.jobs.get(replacement.job_id)
+        if current is None or current.version != expected_version:
+            return False
+        self.jobs[replacement.job_id] = replacement
+        return True
 
 
 class RecordingQueue:
@@ -88,6 +114,7 @@ def _event(
     return {
         "rawPath": path,
         "body": raw_body,
+        "headers": {"Idempotency-Key": "request-0001"},
         "requestContext": {
             "http": {"method": method},
             "authorizer": {"jwt": {"claims": claims}},
@@ -244,6 +271,67 @@ def test_owner_subject_rejects_path_characters() -> None:
     assert response["statusCode"] == 400
     assert not store.jobs
     assert not queue.submitted
+
+
+def test_idempotent_replay_returns_original_without_second_enqueue() -> None:
+    service, store, queue, events = _service()
+    event = _event("POST", "/jobs", body={"dataset_key": "uploads/user-1/a.zip"})
+
+    first = handle_request(event, service, TestRateLimiter())
+    second = handle_request(event, service, TestRateLimiter())
+
+    assert first["statusCode"] == 202
+    assert second["statusCode"] == 202
+    assert _body(first)["job"]["job_id"] == _body(second)["job"]["job_id"]
+    assert len(store.jobs) == 1
+    assert len(queue.submitted) == 1
+    assert events.events[-1].reason == "idempotent_replay"
+
+
+def test_idempotency_key_reuse_with_different_request_conflicts() -> None:
+    service, _, queue, _ = _service()
+    first = _event("POST", "/jobs", body={"dataset_key": "uploads/user-1/a.zip"})
+    second = _event("POST", "/jobs", body={"dataset_key": "uploads/user-1/b.zip"})
+
+    assert handle_request(first, service, TestRateLimiter())["statusCode"] == 202
+    conflict = handle_request(second, service, TestRateLimiter())
+
+    assert conflict["statusCode"] == 409
+    assert len(queue.submitted) == 1
+
+
+def test_job_submission_requires_idempotency_key() -> None:
+    service, _, queue, _ = _service()
+    event = _event("POST", "/jobs", body={"dataset_key": "uploads/user-1/a.zip"})
+    event["headers"] = {}
+
+    response = handle_request(event, service, TestRateLimiter())
+
+    assert response["statusCode"] == 400
+    assert not queue.submitted
+
+
+def test_owner_can_cancel_queued_job_but_other_owner_cannot() -> None:
+    service, store, _, _ = _service()
+    service.submit("user-1", JobRequest(dataset_key="uploads/user-1/a.zip"))
+    lifecycle = JobLifecycle(store)
+
+    other = handle_request(
+        _event("DELETE", "/jobs/job-1", owner="user-2"),
+        service,
+        TestRateLimiter(),
+        lifecycle,
+    )
+    own = handle_request(
+        _event("DELETE", "/jobs/job-1", owner="user-1"),
+        service,
+        TestRateLimiter(),
+        lifecycle,
+    )
+
+    assert other["statusCode"] == 404
+    assert own["statusCode"] == 202
+    assert store.jobs["job-1"].status == "cancelled"
 
 
 def test_job_contract_supports_all_lifecycle_states() -> None:

@@ -47,6 +47,12 @@ Job states are `queued`, `running`, `succeeded`, `failed`, `cancelled`, and `exp
 
 The hosted alpha uses an invite-ready multi-user model. API Gateway/Cognito verifies JWT signature, issuer, audience, and expiry; application requests must also carry the `dqa:jobs` scope. Object keys and job reads are owner-scoped. Each owner may have at most one queued and one running job. Default application limits are five submissions and sixty status reads per minute per owner, backed by an atomic counter. Authorization, quota, throttling, enqueue, and owner-denial outcomes emit structured security events.
 
+Dataset bytes do not pass through the control-plane Lambda. `POST /uploads` creates a 15-minute, owner-scoped direct-S3 POST constrained by declared length and SHA-256 checksum. The worker independently validates the downloaded ZIP before use: 2 GiB compressed, 10 GiB expanded, 100,000 entries, 20:1 aggregate expansion, stored/deflate compression only, and no encryption, links, duplicate paths, absolute paths, or traversal. Extraction is streamed into a new temporary directory and atomically published only after its actual byte count matches validated metadata. Hosted Roboflow ingestion is deferred; API keys are never accepted by the production request contract.
+
+Job execution uses atomic compare-and-swap versions and five-minute worker leases. A crashed worker can be reclaimed for a new attempt, but each attempt writes only to `artifacts/{owner}/{job}/attempt-{n}/`. Completion atomically records exactly one immutable result prefix and repeated completion by the same worker is idempotent. Stale workers cannot complete a reclaimed job. Jobs retry at most three times, have a two-hour total execution timeout, and support cooperative cancellation through `DELETE /jobs/{id}`. The API requires an 8–128 character `Idempotency-Key`; a replay returns the original job without another queue submission, while reuse for different input returns `409`.
+
+Lifecycle targets are 24 hours for source data after completion, 7 days for successful artifacts, 48 hours for failed/cancelled artifacts, and 30 days for job metadata. DynamoDB conditional writes/TTL and S3 lifecycle rules will enforce these deadlines; application deadlines are calculated from terminal completion time.
+
 ## Invariants
 
 Preserve these properties when changing the implementation:
