@@ -45,6 +45,8 @@ The production web path is intentionally separate from `web_dashboard.py`. `dqa.
 
 Job states are `queued`, `running`, `succeeded`, `failed`, `cancelled`, and `expired`. AWS-specific storage and queue adapters are deliberately deferred to the infrastructure phase.
 
+The hosted alpha uses an invite-ready multi-user model. API Gateway/Cognito verifies JWT signature, issuer, audience, and expiry; application requests must also carry the `dqa:jobs` scope. Object keys and job reads are owner-scoped. Each owner may have at most one queued and one running job. Default application limits are five submissions and sixty status reads per minute per owner, backed by an atomic counter. Authorization, quota, throttling, enqueue, and owner-denial outcomes emit structured security events.
+
 ## Invariants
 
 Preserve these properties when changing the implementation:

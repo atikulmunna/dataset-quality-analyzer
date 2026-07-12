@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
+import re
 from typing import Callable, Literal, Protocol
 from uuid import uuid4
 
@@ -13,6 +14,10 @@ Severity = Literal["critical", "high", "medium", "low"]
 
 class JobInputError(ValueError):
     """Raised when a submitted job violates the public request contract."""
+
+
+class JobQuotaError(RuntimeError):
+    """Raised when an atomic per-owner job quota rejects a submission."""
 
 
 @dataclass(frozen=True)
@@ -40,8 +45,18 @@ class JobRecord:
         return {key: value for key, value in asdict(self).items() if value is not None}
 
 
+@dataclass(frozen=True)
+class SecurityEvent:
+    action: str
+    outcome: Literal["allowed", "denied", "failed"]
+    occurred_at: str
+    owner_id: str | None = None
+    job_id: str | None = None
+    reason: str | None = None
+
+
 class JobStore(Protocol):
-    def create(self, job: JobRecord) -> None: ...
+    def create_if_within_quota(self, job: JobRecord, *, max_queued: int, max_running: int) -> bool: ...
 
     def get(self, job_id: str) -> JobRecord | None: ...
 
@@ -52,6 +67,10 @@ class JobQueue(Protocol):
     def submit(self, job: JobRecord) -> None: ...
 
 
+class SecurityEventSink(Protocol):
+    def emit(self, event: SecurityEvent) -> None: ...
+
+
 class JobService:
     def __init__(
         self,
@@ -60,11 +79,17 @@ class JobService:
         *,
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
+        security_events: SecurityEventSink | None = None,
+        max_queued_per_owner: int = 1,
+        max_running_per_owner: int = 1,
     ) -> None:
         self._store = store
         self._queue = queue
         self._id_factory = id_factory or (lambda: uuid4().hex)
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._security_events = security_events
+        self._max_queued = max_queued_per_owner
+        self._max_running = max_running_per_owner
 
     def submit(self, owner_id: str, request: JobRequest) -> JobRecord:
         self._validate(owner_id, request)
@@ -80,24 +105,58 @@ class JobService:
             created_at=now,
             updated_at=now,
         )
-        self._store.create(job)
+        created = self._store.create_if_within_quota(
+            job,
+            max_queued=self._max_queued,
+            max_running=self._max_running,
+        )
+        if not created:
+            self.record_event("job.submit", "denied", owner_id=owner_id, reason="quota_exceeded")
+            raise JobQuotaError("Active job quota exceeded.")
         try:
             self._queue.submit(job)
         except Exception:
             failed = replace(job, status="failed", error_code="enqueue_failed")
             self._store.replace(failed)
+            self.record_event("job.submit", "failed", owner_id=owner_id, job_id=job.job_id, reason="enqueue_failed")
             raise
+        self.record_event("job.submit", "allowed", owner_id=owner_id, job_id=job.job_id)
         return job
 
     def get_owned(self, owner_id: str, job_id: str) -> JobRecord | None:
         job = self._store.get(job_id)
         if job is None or job.owner_id != owner_id:
+            self.record_event("job.read", "denied", owner_id=owner_id, job_id=job_id, reason="not_found_or_unowned")
             return None
+        self.record_event("job.read", "allowed", owner_id=owner_id, job_id=job_id)
         return job
+
+    def record_event(
+        self,
+        action: str,
+        outcome: Literal["allowed", "denied", "failed"],
+        *,
+        owner_id: str | None = None,
+        job_id: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        if self._security_events is None:
+            return
+        now = self._clock().astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        self._security_events.emit(
+            SecurityEvent(
+                action=action,
+                outcome=outcome,
+                occurred_at=now,
+                owner_id=owner_id,
+                job_id=job_id,
+                reason=reason,
+            )
+        )
 
     @staticmethod
     def _validate(owner_id: str, request: JobRequest) -> None:
-        if not owner_id or len(owner_id) > 200:
+        if not re.fullmatch(r"[A-Za-z0-9:_-]{1,200}", owner_id):
             raise JobInputError("Authenticated owner is invalid.")
         prefix = f"uploads/{owner_id}/"
         if not request.dataset_key.startswith(prefix):

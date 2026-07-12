@@ -2,9 +2,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
-from .jobs import JobInputError, JobRequest, JobService
+from .jobs import JobInputError, JobQuotaError, JobRequest, JobService
+
+
+@dataclass(frozen=True)
+class AuthContext:
+    owner_id: str
+    scopes: frozenset[str]
+
+
+class RateLimiter(Protocol):
+    def allow(self, owner_id: str, action: str) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -20,13 +30,21 @@ class ApiResponse:
         }
 
 
-def handle_request(event: dict[str, Any], jobs: JobService) -> dict[str, object]:
-    owner_id = _owner_id(event)
-    if owner_id is None:
+def handle_request(event: dict[str, Any], jobs: JobService, rate_limiter: RateLimiter) -> dict[str, object]:
+    auth = _auth_context(event)
+    if auth is None:
+        jobs.record_event("request.authenticate", "denied", reason="missing_subject")
         return ApiResponse(401, {"error": "unauthorized"}).to_lambda()
+    if "dqa:jobs" not in auth.scopes:
+        jobs.record_event("request.authorize", "denied", owner_id=auth.owner_id, reason="missing_scope")
+        return ApiResponse(403, {"error": "forbidden"}).to_lambda()
 
     method = str(event.get("requestContext", {}).get("http", {}).get("method", "")).upper()
     path = str(event.get("rawPath", ""))
+    action = f"{method} {path.split('/', 2)[1] if path.startswith('/') and len(path.split('/')) > 1 else path}"
+    if not rate_limiter.allow(auth.owner_id, action):
+        jobs.record_event("request.rate_limit", "denied", owner_id=auth.owner_id, reason="rate_limited")
+        return ApiResponse(429, {"error": "rate_limited"}).to_lambda()
 
     if method == "POST" and path == "/jobs":
         try:
@@ -37,7 +55,9 @@ def handle_request(event: dict[str, Any], jobs: JobService) -> dict[str, object]
                 fail_on=payload.get("fail_on", "high"),
                 near_duplicates=payload.get("near_duplicates", False),
             )
-            job = jobs.submit(owner_id, request)
+            job = jobs.submit(auth.owner_id, request)
+        except JobQuotaError as exc:
+            return ApiResponse(429, {"error": "quota_exceeded", "message": str(exc)}).to_lambda()
         except (JobInputError, TypeError, ValueError) as exc:
             return ApiResponse(400, {"error": "invalid_request", "message": str(exc)}).to_lambda()
         except Exception:
@@ -48,7 +68,7 @@ def handle_request(event: dict[str, Any], jobs: JobService) -> dict[str, object]
         job_id = path.removeprefix("/jobs/")
         if not job_id or "/" in job_id:
             return ApiResponse(404, {"error": "not_found"}).to_lambda()
-        job = jobs.get_owned(owner_id, job_id)
+        job = jobs.get_owned(auth.owner_id, job_id)
         if job is None:
             return ApiResponse(404, {"error": "not_found"}).to_lambda()
         return ApiResponse(200, {"job": job.to_dict()}).to_lambda()
@@ -56,10 +76,14 @@ def handle_request(event: dict[str, Any], jobs: JobService) -> dict[str, object]
     return ApiResponse(404, {"error": "not_found"}).to_lambda()
 
 
-def _owner_id(event: dict[str, Any]) -> str | None:
+def _auth_context(event: dict[str, Any]) -> AuthContext | None:
     claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
     subject = claims.get("sub") if isinstance(claims, dict) else None
-    return subject if isinstance(subject, str) and subject else None
+    if not isinstance(subject, str) or not subject:
+        return None
+    raw_scope = claims.get("scope", "")
+    scopes = frozenset(raw_scope.split()) if isinstance(raw_scope, str) else frozenset()
+    return AuthContext(owner_id=subject, scopes=scopes)
 
 
 def _json_body(event: dict[str, Any]) -> dict[str, Any]:
