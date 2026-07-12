@@ -190,7 +190,7 @@ Contains a deterministic snapshot used by checks and future cache work:
 - file path, size, mtime, sha256, image dimensions, split
 - parsed label rows and parse errors
 
-The current cache key identifies the indexed image snapshot from image paths, file statistics, and content hashes. DQA writes the index on every run; incremental warm-cache reuse is not part of the current v1 contract.
+The cache key identifies the indexed image snapshot from image paths, file statistics, and content hashes. When an existing output directory contains `index.json` for the same dataset root, DQA reuses unchanged per-image hashes and metadata. YOLO label parses are also reused when label existence, size, and nanosecond mtime match. COCO annotation JSON is reparsed on each run because it is the centralized annotation source. Cache misses rebuild safely, unreadable cache files are ignored, and JSON artifacts are replaced atomically.
 
 ## 6) Check Definitions
 
@@ -273,7 +273,7 @@ Determinism requirements:
 - Stable fingerprint generation for same underlying issue
 - Fixed random seeds where sampling is used
 
-No throughput or warm-cache guarantee is part of the current v1 contract. Performance limits must be based on published benchmarks before production deployment.
+No throughput or warm-cache speed guarantee is part of the current v1 contract. Cache effectiveness depends on dataset size and storage speed; production limits must be based on representative benchmarks.
 
 ## 9) Test Strategy
 

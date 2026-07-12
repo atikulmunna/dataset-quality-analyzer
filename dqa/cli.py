@@ -149,6 +149,16 @@ def _load_json(path: Path, expected_name: str) -> dict:
     return payload
 
 
+def _load_index_cache(path: Path) -> dict | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def _recommendation_for_id(finding_id: str) -> str:
     mapping = {
         "CLASS_LOW_SUPPORT": "Increase labeled samples for low-support classes or merge/remove unstable classes.",
@@ -407,18 +417,28 @@ def run_audit(args: argparse.Namespace) -> int:
     )
 
     requested_splits = [s.strip() for s in args.splits.split(",") if s.strip()]
+    previous_index = _load_index_cache(args.out / "index.json")
 
     # Auto-detect YOLO-vs-COCO from source path.
     source_suffix = data_yaml_path.suffix.lower()
     if data_yaml_path.is_file() and source_suffix in {".yaml", ".yml"}:
         spec = load_dataset_spec(data_yaml_path, requested_splits=requested_splits)
-        index_result = build_index(spec, max_images=max(0, int(args.max_images)))
+        index_result = build_index(
+            spec,
+            max_images=max(0, int(args.max_images)),
+            previous_index=previous_index,
+        )
         dataset_ref = spec.data_yaml.as_posix()
         dataset_root = spec.root.as_posix()
         class_names = spec.names
         split_names = list(spec.splits.keys())
     elif data_yaml_path.is_dir() or (data_yaml_path.is_file() and source_suffix == ".json"):
-        index_result = build_index_from_coco(data_yaml_path, requested_splits=requested_splits, max_images=max(0, int(args.max_images)))
+        index_result = build_index_from_coco(
+            data_yaml_path,
+            requested_splits=requested_splits,
+            max_images=max(0, int(args.max_images)),
+            previous_index=previous_index,
+        )
         dataset_ref = str(index_result.payload.get("data_source", data_yaml_path.as_posix()))
         dataset_root = str(index_result.payload.get("dataset_root", ""))
         class_names = list(index_result.payload.get("class_names", []))
@@ -544,6 +564,8 @@ def run_audit(args: argparse.Namespace) -> int:
         f"out={args.out.resolve().as_posix()}",
         f"findings={len(findings)}",
         f"build_failed={summary_payload['totals']['build_failed']}",
+        f"index_cache_hits={index_result.cache_hits}",
+        f"index_cache_misses={index_result.cache_misses}",
     ]
     (args.out / "run.log").write_text("\n".join(run_log) + "\n", encoding="utf-8")
 

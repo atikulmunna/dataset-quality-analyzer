@@ -61,6 +61,33 @@ def test_repeated_audits_have_deterministic_quality_artifacts(tmp_path: Path) ->
     assert first_summary == second_summary
 
 
+def test_rerun_reuses_unchanged_yolo_index_rows(tmp_path: Path) -> None:
+    data = _dataset(tmp_path / "dataset", with_label=True)
+    out = tmp_path / "run"
+
+    assert main(["audit", "--data", str(data), "--out", str(out), "--format", "json"]) == 0
+    assert "index_cache_misses=1" in (out / "run.log").read_text(encoding="utf-8")
+
+    assert main(["audit", "--data", str(data), "--out", str(out), "--format", "json"]) == 0
+    second_log = (out / "run.log").read_text(encoding="utf-8")
+    assert "index_cache_hits=1" in second_log
+    assert "index_cache_misses=0" in second_log
+
+
+def test_changed_label_invalidates_only_its_cached_row(tmp_path: Path) -> None:
+    data = _dataset(tmp_path / "dataset", with_label=True)
+    out = tmp_path / "run"
+    label = data.parent / "train" / "labels" / "sample.txt"
+
+    assert main(["audit", "--data", str(data), "--out", str(out), "--format", "json"]) == 0
+    label.write_text("0 0.5 0.5 0.25 0.25\n", encoding="utf-8")
+    assert main(["audit", "--data", str(data), "--out", str(out), "--format", "json"]) == 0
+
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert "index_cache_hits=0" in log
+    assert "index_cache_misses=1" in log
+
+
 def test_malformed_coco_returns_config_error_without_traceback(tmp_path: Path, capsys) -> None:
     train = tmp_path / "dataset" / "train"
     train.mkdir(parents=True)

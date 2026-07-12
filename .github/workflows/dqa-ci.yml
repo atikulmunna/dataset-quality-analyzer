@@ -29,7 +29,9 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests
-        run: pytest -q
+        run: |
+          python -m compileall -q dqa web_dashboard.py
+          pytest -q
 
   dqa-gate:
     runs-on: ubuntu-latest

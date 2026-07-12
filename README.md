@@ -95,6 +95,8 @@ Each run directory contains:
 | `report.html` | Human-readable report when HTML output is enabled |
 | `run.log` | Basic run outcome |
 
+Reusing the same output directory enables incremental indexing. Unchanged image hashes and metadata are reused; unchanged YOLO label parses are reused as well. Use a new output directory when an entirely independent cold run is desired.
+
 The audit exits with:
 
 - `0`: completed without a finding at or above the gate

@@ -196,6 +196,7 @@ def _checkbox(name: str, checked: bool = False, label: str = "") -> str:
 
 def _render_page(result: dict[str, object] | None = None, form: dict[str, list[str]] | None = None) -> str:
     form = form or {}
+    data_path_placeholder = "C:\\path\\to\\data.yaml or COCO folder/json"
 
     def val(key: str, default: str = "") -> str:
         return _first(form, key, default)
@@ -278,7 +279,7 @@ def _render_page(result: dict[str, object] | None = None, form: dict[str, list[s
       <form method=\"post\" action=\"/run/audit\" class=\"card\">
         <h2>1) Audit Dataset</h2>
         <label>Data Path (local)</label>
-        {_input('audit_data', val('audit_data'), 'C:\\path\\to\\data.yaml or COCO folder/json')}
+        {_input('audit_data', val('audit_data'), data_path_placeholder)}
         <label>or Data URL (remote)</label>
         {_input('audit_data_url', val('audit_data_url'), 'https://app.roboflow.com/workspace/project/1')}
         <div class=\"row2\">

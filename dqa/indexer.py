@@ -17,6 +17,21 @@ _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 class BuildIndexResult:
     payload: dict[str, Any]
     class_count: int
+    cache_hits: int = 0
+    cache_misses: int = 0
+
+
+def _previous_rows(previous_index: dict[str, Any] | None, dataset_root: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    if not previous_index or previous_index.get("dataset_root") != dataset_root.as_posix():
+        return {}
+    rows = previous_index.get("images")
+    if not isinstance(rows, list):
+        return {}
+    return {
+        (str(row.get("split", "")), str(row.get("image", ""))): row
+        for row in rows
+        if isinstance(row, dict)
+    }
 
 
 def _read_png_size(data: bytes) -> tuple[int, int]:
@@ -155,9 +170,16 @@ def _parse_label_rows(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, 
     return rows, errors
 
 
-def build_index(spec: DatasetSpec, max_images: int = 0) -> BuildIndexResult:
+def build_index(
+    spec: DatasetSpec,
+    max_images: int = 0,
+    previous_index: dict[str, Any] | None = None,
+) -> BuildIndexResult:
     images: list[dict[str, Any]] = []
     split_stats: dict[str, dict[str, Any]] = {}
+    cached_rows = _previous_rows(previous_index, spec.root)
+    cache_hits = 0
+    cache_misses = 0
 
     total_seen = 0
     for split_name in sorted(spec.splits):
@@ -194,11 +216,42 @@ def build_index(spec: DatasetSpec, max_images: int = 0) -> BuildIndexResult:
                 size_bytes = -1
                 mtime_ns = -1
 
-            width, height, image_error = _image_dimensions(image_path)
+            label_size_bytes = -1
+            label_mtime_ns = -1
+            if label_exists:
+                try:
+                    label_stat = label_path.stat()
+                    label_size_bytes = int(label_stat.st_size)
+                    label_mtime_ns = int(label_stat.st_mtime_ns)
+                except OSError:
+                    pass
+
+            cached = cached_rows.get((split_name, image_rel))
+            cache_valid = bool(
+                cached
+                and cached.get("size_bytes") == size_bytes
+                and cached.get("mtime_ns") == mtime_ns
+                and cached.get("label_exists") == label_exists
+                and cached.get("label_size_bytes", -1) == label_size_bytes
+                and cached.get("label_mtime_ns", -1) == label_mtime_ns
+            )
 
             label_rows: list[dict[str, Any]] = []
             parse_errors: list[dict[str, Any]] = []
-            if label_exists:
+            if cache_valid and cached is not None:
+                cache_hits += 1
+                width = cached.get("width")
+                height = cached.get("height")
+                image_error = cached.get("image_error")
+                sha256 = str(cached.get("sha256", ""))
+                label_rows = list(cached.get("label_rows", []))
+                parse_errors = list(cached.get("label_parse_errors", []))
+            else:
+                cache_misses += 1
+                width, height, image_error = _image_dimensions(image_path)
+                sha256 = _sha256_file(image_path)
+
+            if label_exists and not cache_valid:
                 try:
                     label_rows, parse_errors = _parse_label_rows(label_path)
                 except OSError as exc:
@@ -210,9 +263,11 @@ def build_index(spec: DatasetSpec, max_images: int = 0) -> BuildIndexResult:
                     "image": image_rel,
                     "label": label_path.relative_to(spec.root).as_posix() if label_exists else None,
                     "label_exists": label_exists,
+                    "label_size_bytes": label_size_bytes,
+                    "label_mtime_ns": label_mtime_ns,
                     "size_bytes": size_bytes,
                     "mtime_ns": mtime_ns,
-                    "sha256": _sha256_file(image_path),
+                    "sha256": sha256,
                     "width": width,
                     "height": height,
                     "image_error": image_error,
@@ -253,7 +308,12 @@ def build_index(spec: DatasetSpec, max_images: int = 0) -> BuildIndexResult:
         "images": images,
         "cache_key": f"sha256:{digest}",
     }
-    return BuildIndexResult(payload=payload, class_count=len(spec.names))
+    return BuildIndexResult(
+        payload=payload,
+        class_count=len(spec.names),
+        cache_hits=cache_hits,
+        cache_misses=cache_misses,
+    )
 
 
 def _infer_split(name: str) -> str | None:
@@ -307,9 +367,17 @@ def _normalize_segment(coords_abs: list[float], img_w: float, img_h: float) -> l
     return out
 
 
-def build_index_from_coco(source: Path, requested_splits: list[str] | None = None, max_images: int = 0) -> BuildIndexResult:
+def build_index_from_coco(
+    source: Path,
+    requested_splits: list[str] | None = None,
+    max_images: int = 0,
+    previous_index: dict[str, Any] | None = None,
+) -> BuildIndexResult:
     root, split_files = _discover_coco_files(source)
     include_splits = set(requested_splits or ["train", "val", "test"])
+    cached_rows = _previous_rows(previous_index, root)
+    cache_hits = 0
+    cache_misses = 0
 
     category_names_by_id: dict[int, str] = {}
     parsed_payloads: list[tuple[str, Path, dict[str, Any]]] = []
@@ -346,6 +414,13 @@ def build_index_from_coco(source: Path, requested_splits: list[str] | None = Non
     for split, ann_file, payload in sorted(parsed_payloads, key=lambda x: (x[0], str(x[1]))):
         image_items = payload.get("images", [])
         ann_items = payload.get("annotations", [])
+        try:
+            annotation_stat = ann_file.stat()
+            annotation_size_bytes = int(annotation_stat.st_size)
+            annotation_mtime_ns = int(annotation_stat.st_mtime_ns)
+        except OSError:
+            annotation_size_bytes = -1
+            annotation_mtime_ns = -1
         anns_by_image: dict[int, list[dict[str, Any]]] = defaultdict(list)
         for ann in ann_items:
             try:
@@ -384,14 +459,27 @@ def build_index_from_coco(source: Path, requested_splits: list[str] | None = Non
                     stat = image_path.stat()
                     size_bytes = int(stat.st_size)
                     mtime_ns = int(stat.st_mtime_ns)
-                    sha256 = _sha256_file(image_path)
-                    _, _, image_error = _image_dimensions(image_path)
+                    cached = cached_rows.get((split, image_rel))
+                    if (
+                        cached
+                        and cached.get("size_bytes") == size_bytes
+                        and cached.get("mtime_ns") == mtime_ns
+                    ):
+                        cache_hits += 1
+                        sha256 = str(cached.get("sha256", ""))
+                        image_error = cached.get("image_error")
+                    else:
+                        cache_misses += 1
+                        sha256 = _sha256_file(image_path)
+                        _, _, image_error = _image_dimensions(image_path)
                 except OSError as exc:
+                    cache_misses += 1
                     size_bytes = -1
                     mtime_ns = -1
                     sha256 = ""
                     image_error = str(exc)
             else:
+                cache_misses += 1
                 size_bytes = -1
                 mtime_ns = -1
                 sha256 = ""
@@ -477,6 +565,8 @@ def build_index_from_coco(source: Path, requested_splits: list[str] | None = Non
                     "image": image_rel,
                     "label": ann_file.relative_to(root).as_posix(),
                     "label_exists": True,
+                    "label_size_bytes": annotation_size_bytes,
+                    "label_mtime_ns": annotation_mtime_ns,
                     "size_bytes": size_bytes,
                     "mtime_ns": mtime_ns,
                     "sha256": sha256,
@@ -515,4 +605,9 @@ def build_index_from_coco(source: Path, requested_splits: list[str] | None = Non
         "images": images_rows,
         "cache_key": f"sha256:{digest}",
     }
-    return BuildIndexResult(payload=payload, class_count=len(class_names))
+    return BuildIndexResult(
+        payload=payload,
+        class_count=len(class_names),
+        cache_hits=cache_hits,
+        cache_misses=cache_misses,
+    )

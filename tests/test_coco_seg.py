@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from dqa.indexer import build_index_from_coco
 
 
@@ -113,3 +115,30 @@ def test_coco_rle_uses_bbox_fallback(tmp_path: Path) -> None:
     assert annotation["annotation_type"] == "bbox"
     assert annotation["width"] == 0.3
     assert annotation["height"] == 0.4
+
+
+def test_coco_rerun_reuses_image_hash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    train = tmp_path / "train"
+    train.mkdir(parents=True)
+    (train / "sample.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+    payload = {
+        "images": [{"id": 1, "file_name": "sample.jpg", "width": 100, "height": 100}],
+        "categories": [{"id": 1, "name": "object"}],
+        "annotations": [{"id": 1, "image_id": 1, "category_id": 1, "bbox": [10, 10, 20, 20]}],
+    }
+    (train / "_annotations.coco.json").write_text(json.dumps(payload), encoding="utf-8")
+    first = build_index_from_coco(tmp_path, requested_splits=["train"])
+
+    def fail_if_hashed(_path: Path) -> str:
+        raise AssertionError("unchanged image should not be rehashed")
+
+    monkeypatch.setattr("dqa.indexer._sha256_file", fail_if_hashed)
+    second = build_index_from_coco(
+        tmp_path,
+        requested_splits=["train"],
+        previous_index=first.payload,
+    )
+
+    assert second.cache_hits == 1
+    assert second.cache_misses == 0
+    assert second.payload == first.payload
