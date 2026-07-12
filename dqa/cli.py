@@ -2,30 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
-import time
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError as JsonSchemaError
 from jsonschema.exceptions import ValidationError as JsonValidationError
 
-from .checks.bbox_sanity import run_bbox_sanity
-from .checks.class_distribution import run_class_distribution
-from .checks.duplicates import run_exact_duplicates
-from .checks.integrity import run_integrity
-from .checks.leakage import run_leakage
-from .checks.near_duplicates import run_near_duplicates
-from .config import ConfigError, load_config
-from .indexer import build_index, build_index_from_coco
-from .io_yolo import DatasetSpecError, load_dataset_spec
-from .models import Finding
-from .remote import RemoteDataError, resolve_data_yaml_source
-from .report.html import write_html
-from .report.json_writer import write_json
+from .audit import AuditOptions, audit_dataset
+from .config import ConfigError
+from .io_yolo import DatasetSpecError
+from .remote import RemoteDataError
 
 
 _SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
@@ -53,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--out", required=True, type=Path, help="Output directory")
     audit.add_argument("--config", type=Path, default=None, help="Config path (default: built-in detection settings)")
     audit.add_argument("--splits", default="train,val,test", help="Comma-separated splits")
+    audit.add_argument("--workers", type=int, default=min(4, os.cpu_count() or 1), help="Hash workers (1-32; default: up to 4)")
     audit.add_argument("--max-images", type=int, default=0)
     audit.add_argument("--near-dup", action="store_true")
     audit.add_argument("--format", default="html,json")
@@ -77,24 +67,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _enabled_checks(cfg: object, include_near_dup_flag: bool) -> list[str]:
-    checks: list[str] = []
-    checks_obj = getattr(cfg, "checks")
-    for name in ["integrity", "class_distribution", "bbox_sanity", "duplicates", "leakage"]:
-        if getattr(getattr(checks_obj, name), "enabled"):
-            checks.append(name)
-    if getattr(checks_obj.near_duplicates, "enabled") or include_near_dup_flag:
-        checks.append("near_duplicates")
-    return checks
-
-
-def _counts(findings: Iterable[Finding]) -> dict[str, int]:
-    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    for finding in findings:
-        counts[finding.severity] += 1
-    return counts
-
-
 def _counts_from_payload(findings: list[dict]) -> dict[str, int]:
     counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     for row in findings:
@@ -102,39 +74,6 @@ def _counts_from_payload(findings: list[dict]) -> dict[str, int]:
         if sev in counts:
             counts[sev] += 1
     return counts
-
-
-def _fails_threshold(findings: Iterable[Finding], fail_on: str) -> bool:
-    threshold = _SEVERITY_RANK[fail_on]
-    for finding in findings:
-        if _SEVERITY_RANK[finding.severity] >= threshold:
-            return True
-    return False
-
-
-def _serialize_finding(finding: Finding) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "id": finding.id,
-        "severity": finding.severity,
-        "split": finding.split,
-        "image": finding.image,
-        "label": finding.label,
-        "class_id": finding.class_id,
-        "message": finding.message,
-        "metrics": finding.metrics,
-        "suggested_action": finding.suggested_action,
-        "fingerprint": finding.fingerprint,
-    }
-    # Keep required fields and drop optional keys when value is None.
-    return {k: v for k, v in payload.items() if v is not None}
-
-
-def _empty_check() -> dict[str, object]:
-    return {"status": "skipped", "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0}}
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _load_json(path: Path, expected_name: str) -> dict:
@@ -147,16 +86,6 @@ def _load_json(path: Path, expected_name: str) -> dict:
     if not isinstance(payload, dict):
         raise ExplainError(f"{expected_name} must be a JSON object: {path}")
     return payload
-
-
-def _load_index_cache(path: Path) -> dict | None:
-    if not path.is_file():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return payload if isinstance(payload, dict) else None
 
 
 def _recommendation_for_id(finding_id: str) -> str:
@@ -395,186 +324,30 @@ def run_diff(args: argparse.Namespace) -> int:
     return 0
 
 def run_audit(args: argparse.Namespace) -> int:
-    start_perf = time.perf_counter()
-    started_at = _utc_now()
-
-    cfg = load_config(args.config)
-    fail_on = args.fail_on or cfg.fail_on
-
-    args.out.mkdir(parents=True, exist_ok=True)
-
-    if args.remote_cache_ttl_hours is not None and args.remote_cache_ttl_hours < 0:
-        raise RemoteDataError("--remote-cache-ttl-hours must be >= 0")
-
-    data_yaml_path = resolve_data_yaml_source(
-        args.data,
-        args.data_url,
-        args.out,
-        data_url_format=args.data_url_format,
-        roboflow_api_key=args.roboflow_api_key,
-        use_remote_cache=not args.no_remote_cache,
-        remote_cache_ttl_hours=args.remote_cache_ttl_hours,
+    splits = tuple(part.strip() for part in args.splits.split(",") if part.strip())
+    formats = tuple(part.strip().lower() for part in str(args.format).split(",") if part.strip())
+    result = audit_dataset(
+        AuditOptions(
+            data=args.data,
+            data_url=args.data_url,
+            data_url_format=args.data_url_format,
+            roboflow_api_key=args.roboflow_api_key,
+            use_remote_cache=not args.no_remote_cache,
+            remote_cache_ttl_hours=args.remote_cache_ttl_hours,
+            out=args.out,
+            config=args.config,
+            splits=splits,
+            workers=args.workers,
+            max_images=max(0, int(args.max_images)),
+            near_duplicates=args.near_dup,
+            formats=formats,
+            fail_on=args.fail_on,
+        )
     )
-
-    requested_splits = [s.strip() for s in args.splits.split(",") if s.strip()]
-    previous_index = _load_index_cache(args.out / "index.json")
-
-    # Auto-detect YOLO-vs-COCO from source path.
-    source_suffix = data_yaml_path.suffix.lower()
-    if data_yaml_path.is_file() and source_suffix in {".yaml", ".yml"}:
-        spec = load_dataset_spec(data_yaml_path, requested_splits=requested_splits)
-        index_result = build_index(
-            spec,
-            max_images=max(0, int(args.max_images)),
-            previous_index=previous_index,
-        )
-        dataset_ref = spec.data_yaml.as_posix()
-        dataset_root = spec.root.as_posix()
-        class_names = spec.names
-        split_names = list(spec.splits.keys())
-    elif data_yaml_path.is_dir() or (data_yaml_path.is_file() and source_suffix == ".json"):
-        index_result = build_index_from_coco(
-            data_yaml_path,
-            requested_splits=requested_splits,
-            max_images=max(0, int(args.max_images)),
-            previous_index=previous_index,
-        )
-        dataset_ref = str(index_result.payload.get("data_source", data_yaml_path.as_posix()))
-        dataset_root = str(index_result.payload.get("dataset_root", ""))
-        class_names = list(index_result.payload.get("class_names", []))
-        split_names = sorted(index_result.payload.get("splits", {}).keys())
-    else:
-        raise RemoteDataError(f"Unsupported dataset source: {data_yaml_path}")
-
-    write_json(args.out / "index.json", index_result.payload)
-
-    findings: list[Finding] = []
-    checks_summary: dict[str, dict[str, object]] = {
-        "integrity": _empty_check(),
-        "class_distribution": _empty_check(),
-        "bbox_sanity": _empty_check(),
-        "duplicates": _empty_check(),
-        "near_duplicates": _empty_check(),
-        "leakage": _empty_check(),
-    }
-
-    if cfg.checks.integrity.enabled:
-        integrity_findings = run_integrity(index_result.payload, class_count=index_result.class_count)
-        findings.extend(integrity_findings)
-        checks_summary["integrity"] = {"status": "completed", "counts": _counts(integrity_findings)}
-
-    if cfg.checks.class_distribution.enabled:
-        dist_findings = run_class_distribution(
-            index_result.payload,
-            class_count=index_result.class_count,
-            min_instances_per_class_warn=cfg.checks.class_distribution.min_instances_per_class_warn,
-            max_class_share_warn=cfg.checks.class_distribution.max_class_share_warn,
-            split_drift_jsd_warn=cfg.checks.class_distribution.split_drift_jsd_warn,
-            split_drift_jsd_high=cfg.checks.class_distribution.split_drift_jsd_high,
-        )
-        findings.extend(dist_findings)
-        checks_summary["class_distribution"] = {"status": "completed", "counts": _counts(dist_findings)}
-
-    if cfg.checks.bbox_sanity.enabled:
-        bbox_findings = run_bbox_sanity(
-            index_result.payload,
-            min_box_area_ratio_warn=cfg.checks.bbox_sanity.min_box_area_ratio_warn,
-            max_box_area_ratio_warn=cfg.checks.bbox_sanity.max_box_area_ratio_warn,
-            max_boxes_per_image_warn=cfg.checks.bbox_sanity.max_boxes_per_image_warn,
-            aspect_ratio_warn=cfg.checks.bbox_sanity.aspect_ratio_warn,
-        )
-        findings.extend(bbox_findings)
-        checks_summary["bbox_sanity"] = {"status": "completed", "counts": _counts(bbox_findings)}
-
-    if cfg.checks.duplicates.enabled:
-        duplicate_findings = run_exact_duplicates(index_result.payload)
-        findings.extend(duplicate_findings)
-        checks_summary["duplicates"] = {"status": "completed", "counts": _counts(duplicate_findings)}
-
-    near_dup_enabled = bool(cfg.checks.near_duplicates.enabled or args.near_dup)
-    if near_dup_enabled:
-        near_dup_findings, near_dup_reason = run_near_duplicates(
-            index_result.payload,
-            phash_hamming_threshold=cfg.checks.near_duplicates.phash_hamming_threshold,
-        )
-        findings.extend(near_dup_findings)
-        status = "completed" if near_dup_reason is None else "skipped"
-        checks_summary["near_duplicates"] = {"status": status, "counts": _counts(near_dup_findings)}
-
-    if cfg.checks.leakage.enabled:
-        leakage_findings = run_leakage(index_result.payload)
-        findings.extend(leakage_findings)
-        checks_summary["leakage"] = {"status": "completed", "counts": _counts(leakage_findings)}
-
-    findings.sort(key=lambda f: (f.id, f.split or "", f.image or "", f.label or "", f.fingerprint))
-
-    flags_payload = {
-        "schema_version": "1.0.0",
-        "findings": [_serialize_finding(f) for f in findings],
-    }
-    write_json(args.out / "flags.json", flags_payload)
-
-    finished_at = _utc_now()
-    duration_sec = round(time.perf_counter() - start_perf, 3)
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-
-    total_counts = _counts(findings)
-    summary_payload = {
-        "schema_version": "1.0.0",
-        "run": {
-            "run_id": run_id,
-            "dqa_version": "0.1.0",
-            "started_at": started_at,
-            "finished_at": finished_at,
-            "duration_sec": duration_sec,
-            "config": {"fail_on": fail_on, "enabled_checks": _enabled_checks(cfg, include_near_dup_flag=args.near_dup)},
-        },
-        "dataset": {
-            "data_yaml": dataset_ref,
-            "root": dataset_root,
-            "splits": {
-                split: {
-                    "images": sum(1 for row in index_result.payload["images"] if row["split"] == split),
-                    "labeled": sum(1 for row in index_result.payload["images"] if row["split"] == split and row["label_exists"]),
-                    "unlabeled": sum(1 for row in index_result.payload["images"] if row["split"] == split and not row["label_exists"]),
-                }
-                for split in split_names
-            },
-            "classes": {"count": len(class_names), "names": class_names},
-        },
-        "checks": checks_summary,
-        "totals": {
-            "findings": len(findings),
-            "by_severity": total_counts,
-            "fail_threshold": fail_on,
-            "build_failed": _fails_threshold(findings, fail_on),
-        },
-    }
-    write_json(args.out / "summary.json", summary_payload)
-
-    formats = {part.strip().lower() for part in str(args.format).split(",") if part.strip()}
-    if "html" in formats:
-        write_html(args.out / "report.html", summary_payload, flags_payload)
-
-    run_log = [
-        f"started_at={started_at}",
-        f"finished_at={finished_at}",
-        f"duration_sec={duration_sec}",
-        f"data={dataset_ref}",
-        f"out={args.out.resolve().as_posix()}",
-        f"findings={len(findings)}",
-        f"build_failed={summary_payload['totals']['build_failed']}",
-        f"index_cache_hits={index_result.cache_hits}",
-        f"index_cache_misses={index_result.cache_misses}",
-    ]
-    (args.out / "run.log").write_text("\n".join(run_log) + "\n", encoding="utf-8")
-
-    print(f"findings={len(findings)}")
-    print(f"build_failed={summary_payload['totals']['build_failed']}")
-
-    return 1 if summary_payload["totals"]["build_failed"] else 0
-
-
+    totals = result.summary["totals"]
+    print(f"findings={totals['findings']}")
+    print(f"build_failed={totals['build_failed']}")
+    return result.exit_code
 
 def run_validate(args: argparse.Namespace) -> int:
     artifact = args.artifact
@@ -627,11 +400,3 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as exc:
         print(f"runtime error: {exc}", file=sys.stderr)
         return 3
-
-
-
-
-
-
-
-

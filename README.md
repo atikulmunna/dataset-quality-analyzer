@@ -74,6 +74,7 @@ Exactly one of `--data` and `--data-url` is required.
 | `--out` | Required output directory |
 | `--config` | Configuration file; omitted uses built-in detection defaults |
 | `--splits` | Comma-separated splits; default `train,val,test` |
+| `--workers` | Concurrent image-hash workers from 1 to 32; default is up to 4 |
 | `--max-images` | Stop after this many indexed images; `0` means all |
 | `--near-dup` | Enable near-duplicate analysis for this run |
 | `--format` | Comma-separated output formats; default `html,json` |
@@ -82,6 +83,17 @@ Exactly one of `--data` and `--data-url` is required.
 | `--remote-cache-ttl-hours` | Reuse remote cache only while younger than this value |
 
 Run `dqa audit --help` for the authoritative CLI syntax. `python -m dqa` remains equivalent when working from a source checkout.
+
+For worker or application integration, call the same typed service used by the CLI:
+
+```python
+from pathlib import Path
+from dqa.audit import AuditOptions, audit_dataset
+
+result = audit_dataset(AuditOptions(data=Path("data.yaml"), out=Path("runs/audit_001")))
+```
+
+`AuditResult` returns the exit code and generated summary, flags, and index payloads without requiring stdout parsing.
 
 ## Output
 
@@ -96,6 +108,8 @@ Each run directory contains:
 | `run.log` | Basic run outcome |
 
 Reusing the same output directory enables incremental indexing. Unchanged image hashes and metadata are reused; unchanged YOLO label parses are reused as well. Use a new output directory when an entirely independent cold run is desired.
+
+Image hashing uses bounded worker parallelism. Near-duplicate analysis uses an exact Hamming-distance BK-tree to avoid an unconditional all-pairs scan while preserving every match within the configured threshold. Highly similar datasets can still produce many pairs and findings.
 
 The audit exits with:
 
@@ -162,6 +176,7 @@ pytest -q
 - [V1_SPEC.md](V1_SPEC.md): behavioral and artifact contract
 - [FINDING_CATALOG.md](FINDING_CATALOG.md): stable finding IDs and severities
 - [wiki.md](wiki.md): implementation map for contributors
+- [BENCHMARKS.md](BENCHMARKS.md): development performance measurements and limits
 - `schemas/`: machine-readable output contracts
 
 ## License

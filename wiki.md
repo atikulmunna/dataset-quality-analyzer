@@ -19,7 +19,8 @@ Dataset content is read-only. Generated outputs and remote download caches live 
 
 | Path | Responsibility |
 |---|---|
-| `dqa/cli.py` | Commands, orchestration, gates, and exit-code mapping |
+| `dqa/cli.py` | Argument parsing, command presentation, and exit-code mapping |
+| `dqa/audit.py` | Typed audit service shared by CLI and future workers |
 | `dqa/config.py` | Strict configuration parsing and validation |
 | `dqa/io_yolo.py` | YOLO `data.yaml` and split resolution |
 | `dqa/indexer.py` | YOLO/COCO parsing, image metadata, hashes, and deterministic index |

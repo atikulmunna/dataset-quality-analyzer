@@ -183,11 +183,14 @@ def _parse_duplicates(payload: dict[str, Any]) -> DuplicatesConfig:
 
 def _parse_near_duplicates(payload: dict[str, Any]) -> NearDuplicatesConfig:
     _reject_unknown_keys("checks.near_duplicates", payload, {"enabled", "phash_hamming_threshold"})
+    threshold = _as_int(
+        "checks.near_duplicates.phash_hamming_threshold", payload.get("phash_hamming_threshold", 8)
+    )
+    if not 0 <= threshold <= 64:
+        raise ConfigError("checks.near_duplicates.phash_hamming_threshold must be between 0 and 64")
     return NearDuplicatesConfig(
         enabled=_as_bool("checks.near_duplicates.enabled", payload.get("enabled", False)),
-        phash_hamming_threshold=_as_int(
-            "checks.near_duplicates.phash_hamming_threshold", payload.get("phash_hamming_threshold", 8)
-        ),
+        phash_hamming_threshold=threshold,
     )
 
 

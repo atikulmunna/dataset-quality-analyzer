@@ -39,6 +39,16 @@ def test_audit_exit_code_matrix(tmp_path: Path, capsys) -> None:
     assert "runtime error:" in captured.err
 
 
+def test_workers_are_bounded_and_logged(tmp_path: Path, capsys) -> None:
+    data = _dataset(tmp_path / "dataset", with_label=True)
+    out = tmp_path / "run"
+
+    assert main(["audit", "--data", str(data), "--out", str(out), "--workers", "2"]) == 0
+    assert "workers=2" in (out / "run.log").read_text(encoding="utf-8")
+    assert main(["audit", "--data", str(data), "--out", str(tmp_path / "bad"), "--workers", "33"]) == 2
+    assert "workers must be between 1 and 32" in capsys.readouterr().err
+
+
 def test_repeated_audits_have_deterministic_quality_artifacts(tmp_path: Path) -> None:
     data = _dataset(tmp_path / "dataset", with_label=True)
     first = tmp_path / "first"

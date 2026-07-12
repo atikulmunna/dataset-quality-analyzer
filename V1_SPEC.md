@@ -45,6 +45,7 @@ Recommended flags for v1:
 ```bash
 --config dqa.yaml
 --splits train,val,test
+--workers 4
 --max-images 0
 --near-dup
 --format html,json
@@ -273,7 +274,7 @@ Determinism requirements:
 - Stable fingerprint generation for same underlying issue
 - Fixed random seeds where sampling is used
 
-No throughput or warm-cache speed guarantee is part of the current v1 contract. Cache effectiveness depends on dataset size and storage speed; production limits must be based on representative benchmarks.
+Image hashing uses bounded worker parallelism (`1..32`). Near-duplicate matching uses an exact Hamming-distance BK-tree. This avoids an unconditional all-pairs scan without losing matches at or below the threshold. No throughput guarantee is part of the current v1 contract; cache and worker effectiveness depend on dataset size, storage, and CPU.
 
 ## 9) Test Strategy
 

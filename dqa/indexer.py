@@ -4,6 +4,7 @@ import hashlib
 import json
 import struct
 from collections import defaultdict
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -174,12 +175,15 @@ def build_index(
     spec: DatasetSpec,
     max_images: int = 0,
     previous_index: dict[str, Any] | None = None,
+    workers: int = 1,
 ) -> BuildIndexResult:
     images: list[dict[str, Any]] = []
     split_stats: dict[str, dict[str, Any]] = {}
     cached_rows = _previous_rows(previous_index, spec.root)
     cache_hits = 0
     cache_misses = 0
+    hash_executor = ThreadPoolExecutor(max_workers=workers) if workers > 1 else None
+    hash_futures: dict[tuple[str, str], Future[str]] = {}
 
     total_seen = 0
     for split_name in sorted(spec.splits):
@@ -249,7 +253,11 @@ def build_index(
             else:
                 cache_misses += 1
                 width, height, image_error = _image_dimensions(image_path)
-                sha256 = _sha256_file(image_path)
+                if hash_executor is None:
+                    sha256 = _sha256_file(image_path)
+                else:
+                    sha256 = ""
+                    hash_futures[(split_name, image_rel)] = hash_executor.submit(_sha256_file, image_path)
 
             if label_exists and not cache_valid:
                 try:
@@ -293,6 +301,13 @@ def build_index(
             break
 
     images.sort(key=lambda x: (x["split"], x["image"]))
+
+    for row in images:
+        future = hash_futures.get((str(row["split"]), str(row["image"])))
+        if future is not None:
+            row["sha256"] = future.result()
+    if hash_executor is not None:
+        hash_executor.shutdown()
 
     cache_basis = []
     for row in images:
@@ -372,12 +387,15 @@ def build_index_from_coco(
     requested_splits: list[str] | None = None,
     max_images: int = 0,
     previous_index: dict[str, Any] | None = None,
+    workers: int = 1,
 ) -> BuildIndexResult:
     root, split_files = _discover_coco_files(source)
     include_splits = set(requested_splits or ["train", "val", "test"])
     cached_rows = _previous_rows(previous_index, root)
     cache_hits = 0
     cache_misses = 0
+    hash_executor = ThreadPoolExecutor(max_workers=workers) if workers > 1 else None
+    hash_futures: dict[tuple[str, str], Future[str]] = {}
 
     category_names_by_id: dict[int, str] = {}
     parsed_payloads: list[tuple[str, Path, dict[str, Any]]] = []
@@ -470,7 +488,11 @@ def build_index_from_coco(
                         image_error = cached.get("image_error")
                     else:
                         cache_misses += 1
-                        sha256 = _sha256_file(image_path)
+                        if hash_executor is None:
+                            sha256 = _sha256_file(image_path)
+                        else:
+                            sha256 = ""
+                            hash_futures[(split, image_rel)] = hash_executor.submit(_sha256_file, image_path)
                         _, _, image_error = _image_dimensions(image_path)
                 except OSError as exc:
                     cache_misses += 1
@@ -590,6 +612,13 @@ def build_index_from_coco(
         )
 
     images_rows.sort(key=lambda x: (x["split"], x["image"]))
+
+    for row in images_rows:
+        future = hash_futures.get((str(row["split"]), str(row["image"])))
+        if future is not None:
+            row["sha256"] = future.result()
+    if hash_executor is not None:
+        hash_executor.shutdown()
 
     cache_basis = []
     for row in images_rows:
