@@ -26,7 +26,7 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pyyaml jsonschema
+          pip install -e ".[dev]"
 
       - name: Run tests
         run: pytest -q
@@ -46,7 +46,7 @@ jobs:
       - name: Install runtime dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml jsonschema
+          pip install .
 
       - name: Build smoke dataset
         run: |
@@ -74,7 +74,7 @@ jobs:
         env:
           DQA_FAIL_ON: ${{ github.event.inputs.fail_on || 'high' }}
         run: |
-          python -m dqa audit \
+          dqa audit \
             --data .ci/smoke/data.yaml \
             --out runs/ci_smoke \
             --config dqa.yaml \
@@ -82,11 +82,11 @@ jobs:
 
       - name: Validate artifacts against schemas
         run: |
-          python -m dqa validate --artifact runs/ci_smoke/summary.json --schema schemas/summary.schema.json
-          python -m dqa validate --artifact runs/ci_smoke/flags.json --schema schemas/flags.schema.json
+          dqa validate --artifact runs/ci_smoke/summary.json --schema schemas/summary.schema.json
+          dqa validate --artifact runs/ci_smoke/flags.json --schema schemas/flags.schema.json
 
       - name: Explain run summary
-        run: python -m dqa explain --run runs/ci_smoke
+        run: dqa explain --run runs/ci_smoke
 
       - name: Upload DQA artifacts
         uses: actions/upload-artifact@v4

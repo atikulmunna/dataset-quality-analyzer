@@ -10,7 +10,7 @@ Any change to IDs or defaults after v1 requires a documented schema/version upda
 | `INTEGRITY_MISSING_LABEL` | `high` | Image file has no matching label file. |
 | `INTEGRITY_ORPHAN_LABEL` | `medium` | Label file has no matching image file. |
 | `INTEGRITY_INVALID_CLASS_ID` | `high` | Label row class ID is < 0 or >= number of classes. |
-| `INTEGRITY_MALFORMED_ROW` | `high` | Label row does not contain 5 numeric tokens. |
+| `INTEGRITY_MALFORMED_ROW` | `high` | Annotation row has an unsupported shape or contains non-numeric values. |
 | `INTEGRITY_COORD_OUT_OF_RANGE` | `high` | Normalized bbox fields are outside [0,1]. |
 | `INTEGRITY_CORRUPT_IMAGE` | `critical` | Image cannot be decoded/read safely. |
 
@@ -51,8 +51,6 @@ Any change to IDs or defaults after v1 requires a documented schema/version upda
 |----|----|----|
 | `LEAKAGE_EXACT_TRAIN_VAL` | `critical` | Exact duplication between train and val. |
 | `LEAKAGE_EXACT_TRAIN_TEST` | `critical` | Exact duplication between train and test. |
-| `LEAKAGE_NEAR_TRAIN_VAL` | `high` | Near-duplicate leakage between train and val. |
-| `LEAKAGE_NEAR_TRAIN_TEST` | `high` | Near-duplicate leakage between train and test. |
 
 ## Notes
 

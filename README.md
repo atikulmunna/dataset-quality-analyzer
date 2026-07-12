@@ -1,494 +1,167 @@
-# Dataset Quality Analyzer (DQA) for YOLO
+# Dataset Quality Analyzer
 
-DQA is a read-only dataset auditing CLI for YOLO object-detection datasets.
-It evaluates data quality before training and produces machine-readable artifacts plus an HTML report.
+Dataset Quality Analyzer (DQA) is a read-only auditing tool for object-detection and segmentation datasets. It finds structural errors, distribution problems, suspicious geometry, duplicates, and split leakage before model training.
 
-## What DQA Evaluates
+DQA supports local Ultralytics-style YOLO datasets, local COCO detection/segmentation exports, and remote Roboflow exports. It produces deterministic JSON artifacts and an optional HTML report suitable for local review or CI quality gates.
 
-DQA evaluates datasets across six quality dimensions:
+## Checks
 
-1. Integrity (annotation/file correctness)
-2. Class distribution (imbalance, low-support, split drift)
-3. Bounding-box sanity (area/aspect/count heuristics)
-4. Exact duplicates (within/across splits)
-5. Near duplicates (optional)
-6. Leakage (train vs val/test contamination)
+DQA evaluates:
 
-## Supported Dataset Format
+1. Annotation and file integrity
+2. Class support, imbalance, and split drift
+3. Bounding-box sanity, including boxes derived from polygons
+4. Exact duplicates within and across splits
+5. Optional perceptual near-duplicates
+6. Train/validation/test leakage
 
-DQA expects Ultralytics-style YOLO layout (detection and segmentation):
+Finding IDs and default severities are defined in [FINDING_CATALOG.md](FINDING_CATALOG.md). The complete v1 behavioral contract is in [V1_SPEC.md](V1_SPEC.md).
 
-- `data.yaml` with:
-  - `path`
-  - `train`, `val`, optional `test`
-  - `names` (list or numeric-key map)
-- Label rows in YOLO format:
+## Requirements
 
-```txt
-class_id x_center y_center width height
-```
+- Python 3.11 or newer
+- `PyYAML`
+- `jsonschema`
+- `Pillow` for near-duplicate detection
 
-Coordinates are expected to be normalized to `[0,1]`.
-
-## Quick Decision Table
-
-Use this first, then jump to the detailed commands later in this README.
-
-| Dataset Type | Input You Provide | Command (PowerShell) | Recommended Config | Expected Output |
-|---|---|---|---|---|
-| YOLO Detection (Local) | `data.yaml` path | `python -m dqa audit --data "C:\path\to\data.yaml" --out "runs\dqa_detect" --config "dqa.yaml"` | `dqa.yaml` | `index.json`, `flags.json`, `summary.json`, `report.html`, `run.log` |
-| YOLO Detection (Roboflow URL) | Roboflow project/version URL | `python -m dqa audit --data-url "https://app.roboflow.com/workspace/project/1" --data-url-format yolov11 --out "runs\dqa_detect_remote" --config "dqa.yaml"` | `dqa.yaml` | Same artifacts in run folder |
-| YOLO Segmentation (Local) | `data.yaml` path | `python -m dqa audit --data "C:\path\to\yolo-seg\data.yaml" --out "runs\dqa_yolo_seg" --config "dqa_seg.yaml"` | `dqa_seg.yaml` | Same artifacts in run folder |
-| YOLO Segmentation (Low Noise) | `data.yaml` path | `python -m dqa audit --data "C:\path\to\yolo-seg\data.yaml" --out "runs\dqa_yolo_seg_low_noise" --config "dqa_seg_low_noise.yaml"` | `dqa_seg_low_noise.yaml` | Same artifacts, fewer bbox sanity flags |
-| COCO Segmentation (Local Folder) | Dataset folder containing split JSONs | `python -m dqa audit --data "C:\path\to\coco-seg-dataset" --out "runs\dqa_coco_seg" --config "dqa_seg.yaml"` | `dqa_seg.yaml` | Same artifacts in run folder |
-| COCO Segmentation (Single Split JSON) | One `_annotations.coco.json` file | `python -m dqa audit --data "C:\path\to\train\_annotations.coco.json" --out "runs\dqa_coco_train_only" --config "dqa_seg.yaml"` | `dqa_seg.yaml` | Same artifacts for that split only |
-
-Quick tips:
-- Use `python -m dqa explain --run "runs\<run_name>"` after every audit.
-- Use `--fail-on low|medium|high|critical` to enforce quality gates in CI.
-- For remote Roboflow runs, set `ROBOFLOW_API_KEY` first.
-## Installation and Run
-
-From repository root:
-
-```bash
-python -m dqa audit --data /path/to/data.yaml --out runs/dqa_001 --config dqa.yaml
-```
-
-Windows PowerShell example:
+Install the project from the repository root:
 
 ```powershell
-python -m dqa audit --data "C:\path\to\data.yaml" --out "runs\dqa_001" --config "dqa.yaml"
-echo $LASTEXITCODE
+python -m pip install .
 ```
 
-Remote URL scaffold example:
+Install optional near-duplicate support with `python -m pip install ".[near-duplicates]"`, or development dependencies with `python -m pip install -e ".[dev]"`.
+
+## Quick start
+
+Audit a local YOLO dataset:
 
 ```powershell
-python -m dqa audit --data-url "https://universe.roboflow.com/workspace/project/version" --out "runs\dqa_remote" --config "dqa.yaml"
-echo $LASTEXITCODE
+dqa audit --data "C:\path\to\data.yaml" --out "runs\audit_001"
 ```
 
-## CLI Options
-
-One of `--data` or `--data-url` is required.
-
-- `--data`: local path to `data.yaml`
-- `--data-url`: remote dataset URL (currently Roboflow URLs are supported)
-- `--data-url-format`: remote export format (default `yolov11`)
-- `--roboflow-api-key`: optional API key override (otherwise uses `ROBOFLOW_API_KEY`)
-- `--no-remote-cache`: force fresh remote download even if cached export exists
-- `--remote-cache-ttl-hours`: re-download when cached export is older than TTL
-- `--out`: required output directory
-- `--config`: path to DQA config (`dqa.yaml` by default)
-- `--splits`: comma-separated subset (default `train,val,test`)
-- `--workers`: reserved for parallelism tuning
-- `--max-images`: limit indexed image count (`0` means all)
-- `--near-dup`: enable near-duplicate check even if config disables it
-- `--format`: output formats, comma-separated (`html,json`)
-- `--fail-on`: severity gate (`critical|high|medium|low`)
-
-## Output Artifacts
-
-DQA writes all artifacts to `--out`:
-
-| File | Meaning |
-|---|---|
-| `index.json` | Deterministic dataset index and cache key basis |
-| `flags.json` | Atomic findings (one item per issue) |
-| `summary.json` | Aggregated counts, run metadata, pass/fail gate result |
-| `report.html` | Human-readable report for quick inspection |
-| `run.log` | Basic run metadata and outcome |
-
-## Dataset Evaluation Standards
-
-DQA standards are controlled by `dqa.yaml` thresholds.
-Default evaluation behavior:
-
-- Integrity:
-  - Missing label for image -> `high`
-  - Orphan label (no image) -> `medium`
-  - Malformed label row -> `high`
-  - Invalid class id -> `high`
-  - Out-of-range normalized coords -> `high`
-  - Corrupt/unreadable image -> `critical`
-- Class distribution:
-  - Dominant class share over threshold (`max_class_share_warn`) -> `medium`
-  - Class with fewer than `min_instances_per_class_warn` -> `low`
-  - Train-vs-val/test drift (JSD over threshold) -> `medium`
-- Bounding boxes:
-  - Tiny/oversized boxes by area ratio -> `medium`
-  - Extreme aspect ratio -> `medium`
-  - Too many boxes per image -> `medium`
-- Exact duplicates:
-  - Within split -> `medium`
-  - Across splits -> `high`
-- Leakage:
-  - Train<->val exact duplicate -> `critical`
-  - Train<->test exact duplicate -> `critical`
-- Near duplicates:
-  - Within split -> `low`
-  - Across splits -> `high`
-
-## Severity, Gating, and Exit Codes
-
-Severity levels:
-
-- `critical`: immediate training blocker
-- `high`: high-risk issue
-- `medium`: quality risk
-- `low`: informational/warning
-
-Fail logic:
-
-- If any finding is at or above `--fail-on`, `build_failed=true` and exit code `1`.
-- Otherwise, exit code `0`.
-
-Other exit codes:
-
-- `2`: config/usage error (invalid config, bad args)
-- `3`: runtime/data access error
-
-## Meaning of Flags (`flags.json`)
-
-Every finding contains:
-
-- `id`: stable finding code
-- `severity`: critical/high/medium/low
-- `message`: human-readable explanation
-- `fingerprint`: stable issue key for dedupe/tracking
-
-Common optional fields:
-
-- `split`, `image`, `label`, `class_id`, `metrics`, `suggested_action`
-
-Finding IDs are frozen in `FINDING_CATALOG.md`.
-
-### Flag Families
-
-- `INTEGRITY_*`: label/image structure and annotation correctness
-- `CLASS_*`: class support, imbalance, and split drift
-- `BBOX_*`: annotation geometry anomalies
-- `DUPLICATE_*`: exact content duplicates
-- `LEAKAGE_*`: train-validation/test contamination
-- `NEAR_DUPLICATE_*`: perceptual near-duplicate clusters
-
-## How to Interpret Your Run
-
-Typical interpretation flow:
-
-1. Check `summary.json -> totals` for `build_failed` and severity counts.
-2. Inspect `checks` block to see which module produced findings.
-3. Open `flags.json` and sort/group by `id` to identify dominant failure mode.
-4. Use `report.html` for quick stakeholder review.
-
-Example:
-
-- Only `CLASS_LOW_SUPPORT` findings with severity `low` means data is structurally clean but some classes are underrepresented.
-- `LEAKAGE_EXACT_TRAIN_VAL` means your split is contaminated and model validation is unreliable.
-
-## Configuration
-
-Default config file:
-
-- `dqa.yaml`
-
-Contract/schema references:
-
-- `V1_SPEC.md`
-- `schemas/summary.schema.json`
-- `schemas/flags.schema.json`
-- `FINDING_CATALOG.md`
-
-## Testing
-
-Run tests:
-
-```bash
-pytest -q
-```
-
-Current baseline covers:
-
-- config validation behavior
-- integrity detection sanity
-- duplicates/leakage detection sanity
-
-## Notes
-
-- DQA is read-only on dataset content.
-- Near-duplicate detection uses Pillow when available.
-- Output ordering is deterministic for stable CI behavior.
-
-## License
-
-MIT
-
-## Troubleshooting
-
-### `config error: ... unknown keys`
-
-Your `dqa.yaml` contains unsupported keys. Keep keys aligned with the current config contract in `V1_SPEC.md`.
-
-### `runtime error: Data file not found`
-
-Your `--data` path is wrong or quoted incorrectly.
-
-PowerShell example:
+Audit a local COCO export directory:
 
 ```powershell
-python -m dqa audit --data "C:\full\path\to\data.yaml" --out "runs\dqa_run" --config "dqa.yaml"
+dqa audit --data "C:\path\to\coco-export" --out "runs\audit_001" --config "dqa_seg.yaml"
 ```
 
-### Exit code is `1` but run completed
-
-This is expected when findings match or exceed your `--fail-on` threshold. Check:
-
-- `summary.json -> totals.fail_threshold`
-- `summary.json -> totals.by_severity`
-
-### `--data-url` with Roboflow URL fails
-
-Check these first:
-
-- `ROBOFLOW_API_KEY` is set (or pass `--roboflow-api-key`)
-- URL includes workspace/project/version
-- Format is valid for export (`--data-url-format`, default `yolov11`)
-- Network access to `api.roboflow.com` is available
-- DQA retries transient API/download errors and reuses cached extracted exports under `--out/_remote` by default
-- Use `--no-remote-cache` for always-fresh downloads or `--remote-cache-ttl-hours` to bound cache age
-
-### `near_duplicates` shows skipped/completed with zero findings
-
-- If Pillow is unavailable, near-duplicate checks may be skipped.
-- If enabled and completed with zero findings, no near duplicates were detected under current threshold.
-
-### Only `CLASS_LOW_SUPPORT` findings appear
-
-Dataset is structurally healthy, but one or more classes have low sample counts under `min_instances_per_class_warn`.
-
-### I typed `--fail-on low` and got a PowerShell parser error
-
-`--fail-on` is a flag for `python -m dqa audit`, not a standalone command.
-
-Correct usage:
-
-```powershell
-python -m dqa audit --data "C:\path\to\data.yaml" --out "runs\dqa_low" --config "dqa.yaml" --fail-on low
-```
-## Remote Cache Controls
-
-DQA reuses extracted remote exports under `--out/_remote` by default.
-
-```powershell
-# Force fresh remote fetch
-python -m dqa audit --data-url "https://universe.roboflow.com/workspace/project/1" --no-remote-cache --out "runs\dqa_remote_fresh" --config "dqa.yaml"
-
-# Reuse cache only if newer than 24 hours
-python -m dqa audit --data-url "https://universe.roboflow.com/workspace/project/1" --remote-cache-ttl-hours 24 --out "runs\dqa_remote_ttl" --config "dqa.yaml"
-```
-## Explain Findings
-
-Summarize and prioritize actions from an existing run:
-
-```powershell
-python -m dqa explain --run "runs\dqa_remote_fresh"
-```
-
-Or provide explicit files:
-
-```powershell
-python -m dqa explain --summary "runs\dqa_remote_fresh\summary.json" --flags "runs\dqa_remote_fresh\flags.json"
-```
-## Segmentation Config
-
-Use `dqa_seg.yaml` for segmentation-heavy datasets (YOLO-seg / COCO-seg), where polygon-derived boxes can otherwise trigger noisy bbox flags.
-
-```powershell
-python -m dqa audit --data "C:\path\to\segmentation-dataset" --out "runs\dqa_seg_tuned" --config "dqa_seg.yaml"
-```
-
-This config keeps integrity/leakage checks active but relaxes bbox/class thresholds for segmentation behavior.
-### Lower-Noise Segmentation Preset
-
-If bbox-derived findings are still too noisy for polygon-heavy datasets, use `dqa_seg_low_noise.yaml` (disables `bbox_sanity`):
-
-```powershell
-python -m dqa audit --data "C:\path\to\segmentation-dataset" --out "runs\dqa_seg_low_noise" --config "dqa_seg_low_noise.yaml"
-```
-## Dataset-Type Command Guide
-
-Use these commands based on dataset type.
-
-### 1) YOLO Detection (local export)
-
-```powershell
-python -m dqa audit --data "C:\path\to\data.yaml" --out "runs\dqa_detect" --config "dqa.yaml"
-python -m dqa explain --run "runs\dqa_detect"
-```
-
-### 2) YOLO Detection (Roboflow URL)
+Audit a Roboflow export:
 
 ```powershell
 $env:ROBOFLOW_API_KEY="your_key"
-python -m dqa audit --data-url "https://app.roboflow.com/workspace/project/1" --data-url-format yolov11 --out "runs\dqa_detect_remote" --config "dqa.yaml"
-python -m dqa explain --run "runs\dqa_detect_remote"
+dqa audit --data-url "https://app.roboflow.com/workspace/project/1" --out "runs\audit_001"
 ```
 
-### 3) YOLO Segmentation (local export)
+Use one configuration based on the dataset:
+
+| Dataset | Configuration |
+|---|---|
+| YOLO or COCO detection | `dqa.yaml` |
+| YOLO or COCO segmentation | `dqa_seg.yaml` |
+| Segmentation where polygon-derived boxes create excessive noise | `dqa_seg_low_noise.yaml` |
+
+## Audit options
+
+Exactly one of `--data` and `--data-url` is required.
+
+| Option | Purpose |
+|---|---|
+| `--data` | Local `data.yaml`, COCO JSON, or COCO export directory |
+| `--data-url` | Remote Roboflow project/version URL |
+| `--data-url-format` | Roboflow export format; default `yolov11` |
+| `--roboflow-api-key` | API key override; otherwise uses `ROBOFLOW_API_KEY` |
+| `--out` | Required output directory |
+| `--config` | Configuration file; omitted uses built-in detection defaults |
+| `--splits` | Comma-separated splits; default `train,val,test` |
+| `--max-images` | Stop after this many indexed images; `0` means all |
+| `--near-dup` | Enable near-duplicate analysis for this run |
+| `--format` | Comma-separated output formats; default `html,json` |
+| `--fail-on` | CI threshold: `critical`, `high`, `medium`, or `low` |
+| `--no-remote-cache` | Force a fresh Roboflow download |
+| `--remote-cache-ttl-hours` | Reuse remote cache only while younger than this value |
+
+Run `dqa audit --help` for the authoritative CLI syntax. `python -m dqa` remains equivalent when working from a source checkout.
+
+## Output
+
+Each run directory contains:
+
+| File | Purpose |
+|---|---|
+| `index.json` | Deterministic dataset index and cache-key basis |
+| `flags.json` | Atomic findings with stable fingerprints |
+| `summary.json` | Run metadata, per-check counts, and gate result |
+| `report.html` | Human-readable report when HTML output is enabled |
+| `run.log` | Basic run outcome |
+
+The audit exits with:
+
+- `0`: completed without a finding at or above the gate
+- `1`: completed and failed the configured quality gate
+- `2`: invalid arguments or configuration
+- `3`: runtime or data-access failure
+
+An exit code of `1` means the audit completed successfully but found blocking issues.
+
+## Review and automation commands
+
+Summarize a run:
 
 ```powershell
-python -m dqa audit --data "C:\path\to\yolo-seg\data.yaml" --out "runs\dqa_yolo_seg" --config "dqa_seg.yaml"
-python -m dqa explain --run "runs\dqa_yolo_seg"
+python -m dqa explain --run "runs\audit_001"
 ```
 
-For lower noise on polygon-heavy datasets:
+Compare two runs and optionally fail on regression:
 
 ```powershell
-python -m dqa audit --data "C:\path\to\yolo-seg\data.yaml" --out "runs\dqa_yolo_seg_low_noise" --config "dqa_seg_low_noise.yaml"
+python -m dqa diff --old "runs\before" --new "runs\after" --fail-on-regression high
 ```
 
-### 4) COCO Segmentation (local export folder)
-
-Point `--data` to the dataset root containing split folders (`train/valid/test`) and COCO annotation JSON files.
+Validate generated artifacts:
 
 ```powershell
-python -m dqa audit --data "C:\path\to\coco-seg-dataset" --out "runs\dqa_coco_seg" --config "dqa_seg.yaml"
-python -m dqa explain --run "runs\dqa_coco_seg"
+python -m dqa validate --artifact "runs\audit_001\summary.json" --schema "schemas\summary.schema.json"
+python -m dqa validate --artifact "runs\audit_001\flags.json" --schema "schemas\flags.schema.json"
 ```
 
-For low-noise mode:
+## Local dashboard
 
-```powershell
-python -m dqa audit --data "C:\path\to\coco-seg-dataset" --out "runs\dqa_coco_seg_low_noise" --config "dqa_seg_low_noise.yaml"
-```
-
-### 5) COCO Segmentation (single split JSON only)
-
-If needed, point directly to a split annotation JSON (audits that split only):
-
-```powershell
-python -m dqa audit --data "C:\path\to\train\_annotations.coco.json" --out "runs\dqa_coco_train_only" --config "dqa_seg.yaml"
-```
-
-### 6) Remote cache controls (for `--data-url`)
-
-```powershell
-# Force fresh remote download
-python -m dqa audit --data-url "https://app.roboflow.com/workspace/project/1" --data-url-format yolov11 --no-remote-cache --out "runs\dqa_remote_fresh" --config "dqa.yaml"
-
-# Reuse remote cache only if newer than 24 hours
-python -m dqa audit --data-url "https://app.roboflow.com/workspace/project/1" --data-url-format yolov11 --remote-cache-ttl-hours 24 --out "runs\dqa_remote_ttl" --config "dqa.yaml"
-```
-
-### Recommended config by dataset type
-
-- Detection-first datasets: `dqa.yaml`
-- Segmentation datasets (balanced): `dqa_seg.yaml`
-- Segmentation datasets (reduce bbox-noise): `dqa_seg_low_noise.yaml`
-
-
-
-
-
-## CI Workflow Gate
-
-GitHub Actions workflow: `.github/workflows/dqa-ci.yml`
-
-What it does on every push/PR:
-
-- Runs `pytest -q`
-- Builds a tiny smoke dataset in CI
-- Runs `python -m dqa audit` with a severity gate
-- Validates `summary.json` and `flags.json` against schemas
-- Uploads `runs/ci_smoke` as an artifact
-
-Manual run:
-
-- Use **Actions -> dqa-ci -> Run workflow**
-- Optional input: `fail_on` (`critical|high|medium|low`, default `high`)
-
-
-
-## Web Dashboard
-
-![Web dashboard](assets/web_dashboard.png)
-
-
-
-If you prefer not to use terminal commands, use the local web dashboard.
-
-Start it from repo root:
+The repository includes a convenience dashboard for local use:
 
 ```powershell
 python web_dashboard.py
 ```
 
-Open:
+Open `http://127.0.0.1:8787`. The dashboard invokes local DQA commands and must not be exposed as a production web service.
 
-- `http://127.0.0.1:8787`
+![Local dashboard](assets/web_dashboard.png)
 
-What it supports:
+## CI
 
-- Audit dataset (`dqa audit`)
-- Explain findings (`dqa explain`)
-- Validate artifact schemas (`dqa validate`)
-- Diff runs (`dqa diff`)
+The workflow in `.github/workflows/dqa-ci.yml` runs tests, executes a smoke audit, validates its artifacts, and uploads the run directory. Use `--fail-on high` for the normal production-dataset gate or choose a different threshold explicitly.
 
-Typical flow in UI:
+Run the local test suite with:
 
-1. Run **Audit** with local `data.yaml` or remote `data-url`.
-2. Run **Explain** on the produced run folder.
-3. Run **Validate** on `summary.json` and `flags.json`.
-4. Run **Diff** between old/new runs for regression tracking.
+```powershell
+pytest -q
+```
 
-Notes:
+## Troubleshooting
 
-- Dashboard executes commands locally in this repository.
-- Keep it local-only (default bind `127.0.0.1`).
-- For Roboflow URL ingestion, set API key in the form or environment.
+- `unknown keys`: the configuration contains a key outside the v1 contract.
+- `Data file not found`: verify the quoted absolute or repository-relative input path.
+- Roboflow failure: verify the API key, project/version URL, requested export format, and network access.
+- Near-duplicate check skipped: install Pillow; a completed check with zero findings means no candidates met the configured threshold.
+- Excessive segmentation geometry warnings: use `dqa_seg.yaml`, or `dqa_seg_low_noise.yaml` when bounding-box checks are not useful.
 
-## Segmentation Case Study (Real Run)
+## Project documentation
 
-This project was validated on a real COCO segmentation dataset with two configs to quantify noise reduction.
+- [V1_SPEC.md](V1_SPEC.md): behavioral and artifact contract
+- [FINDING_CATALOG.md](FINDING_CATALOG.md): stable finding IDs and severities
+- [wiki.md](wiki.md): implementation map for contributors
+- `schemas/`: machine-readable output contracts
 
-### Run A (generic config)
+## License
 
-- Command: `python -m dqa audit --data "C:\Users\Munna\Downloads\Road segmentation.v1i.coco-segmentation" --out "runs/web_audit_raw" --config "dqa.yaml"`
-- Result: `findings=67725`, `build_failed=False`
-
-### Run B (segmentation-tuned config)
-
-- Command: `python -m dqa audit --data "C:\Users\Munna\Downloads\Road segmentation.v1i.coco-segmentation" --out "runs/web_audit_seg" --config "dqa_seg.yaml"`
-- Result: `findings=1524`, `build_failed=False`
-
-### Diff (A -> B)
-
-- Command: `python -m dqa diff --old "runs/web_audit_raw" --new "runs/web_audit_seg"`
-- Result highlights:
-  - Total delta: `-66201`
-  - Medium delta: `-66196`
-  - Low delta: `-5`
-  - No regressions
-  - Largest improvements: `BBOX_TINY_BOX`, `BBOX_EXTREME_ASPECT_RATIO`, `BBOX_OVERSIZED_BOX`
-
-Recommended policy for segmentation datasets:
-
-- Default to `dqa_seg.yaml`
-- If polygon-derived bbox noise is still too high, use `dqa_seg_low_noise.yaml`
-- Keep CI gate at `high` (or `critical`) for segmentation-heavy projects
-
-## Dashboard Walkthrough (Screenshots)
-
-### 1) Audit Dataset
-
-![Audit dataset screen](assets/audit_dataset.png)
-
-### 2) Explain Findings
-
-![Explain findings screen](assets/explain_findings.png)
-
-### 3) Diff Runs (Regression/Improvement)
-
-![Diff runs screen](assets/diff_runs.png)
-
+MIT

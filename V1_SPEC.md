@@ -5,7 +5,21 @@ Date: 2026-02-06
 
 ## 1) Scope
 
-DQA v1 audits YOLO detection datasets without model training and outputs deterministic, machine-readable findings plus an HTML report.
+DQA v1 audits YOLO and COCO object-detection or segmentation datasets without model training. It outputs deterministic, machine-readable findings plus an optional HTML report.
+
+Supported inputs:
+- Ultralytics-style YOLO `data.yaml` using detection rows or polygon segmentation rows
+- COCO annotation JSON, or an export directory containing split annotation JSON files
+- Roboflow project/version URLs resolved to a supported export
+
+Format boundaries:
+- Splits are limited to `train`, `val`, and `test` (`valid` is normalized to `val` during COCO discovery).
+- Indexed image extensions are `.jpg`, `.jpeg`, `.png`, `.bmp`, and `.webp`.
+- YOLO detection rows contain a class ID and four normalized box values.
+- YOLO segmentation rows contain a class ID and at least three normalized polygon points.
+- COCO polygon segmentation uses the first valid polygon for geometry checks; otherwise DQA falls back to the annotation bbox when present.
+- COCO RLE masks are not decoded. An accompanying bbox can still be audited.
+- Near-duplicate analysis is optional, disabled by default, and not covered by a production-scale performance guarantee.
 
 In-scope checks:
 - Integrity checks (files, labels, class IDs, annotation format)
@@ -17,12 +31,12 @@ In-scope checks:
 
 Out of scope for v1:
 - Semantic label correctness (human-in-the-loop tasks)
-- Segmentation/keypoint formats
+- Keypoint, pose, classification, and RLE-only segmentation analysis
 - Auto-fixing labels
 
 ## 2) CLI Contract
 
-Primary command:
+Primary installed command:
 ```bash
 dqa audit --data /path/to/data.yaml --out runs/dqa_001
 ```
@@ -31,7 +45,6 @@ Recommended flags for v1:
 ```bash
 --config dqa.yaml
 --splits train,val,test
---workers 8
 --max-images 0
 --near-dup
 --format html,json
@@ -73,7 +86,6 @@ checks:
     phash_hamming_threshold: 8
   leakage:
     enabled: true
-    include_near_dup: false
 ```
 
 Notes:
@@ -174,15 +186,11 @@ Recommended fields:
 
 ### 5.3 index.json
 
-Contains cached deterministic metadata for reruns:
-- file path, size, mtime, sha256 (optional lazy), image dimensions, split
+Contains a deterministic snapshot used by checks and future cache work:
+- file path, size, mtime, sha256, image dimensions, split
 - parsed label rows and parse errors
 
-Cache key must include:
-- dataset root path
-- file stats snapshot
-- dqa version
-- enabled checks and relevant thresholds
+The current cache key identifies the indexed image snapshot from image paths, file statistics, and content hashes. DQA writes the index on every run; incremental warm-cache reuse is not part of the current v1 contract.
 
 ## 6) Check Definitions
 
@@ -192,7 +200,7 @@ Detect:
 - Missing label for image
 - Orphan label without image
 - Invalid class ID (<0 or >= num_classes)
-- Malformed rows (not 5 tokens, non-numeric)
+- Malformed rows (unsupported token shape or non-numeric values)
 - Normalized coords/size out of [0,1]
 - Corrupt images that cannot be decoded
 
@@ -239,13 +247,12 @@ Flags:
 
 Detect:
 - Exact duplicate leakage between train and val/test
-- Optional near-duplicate leakage
 
 Flags:
 - `LEAKAGE_EXACT_TRAIN_VAL`
 - `LEAKAGE_EXACT_TRAIN_TEST`
-- `LEAKAGE_NEAR_TRAIN_VAL`
-- `LEAKAGE_NEAR_TRAIN_TEST`
+
+Cross-split perceptual similarity is reported by `NEAR_DUPLICATE_ACROSS_SPLITS`; leakage does not emit a second finding for the same near-duplicate pair.
 
 ## 7) CI Gating Policy
 
@@ -266,9 +273,7 @@ Determinism requirements:
 - Stable fingerprint generation for same underlying issue
 - Fixed random seeds where sampling is used
 
-Performance targets for v1:
-- 100k images, exact duplicate + core checks, 8 workers: target <= 20 min on modern 8-core machine
-- Re-run with warm cache: target >= 40% faster
+No throughput or warm-cache guarantee is part of the current v1 contract. Performance limits must be based on published benchmarks before production deployment.
 
 ## 9) Test Strategy
 

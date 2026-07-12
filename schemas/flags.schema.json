@@ -44,9 +44,7 @@
             "NEAR_DUPLICATE_WITHIN_SPLIT",
             "NEAR_DUPLICATE_ACROSS_SPLITS",
             "LEAKAGE_EXACT_TRAIN_VAL",
-            "LEAKAGE_EXACT_TRAIN_TEST",
-            "LEAKAGE_NEAR_TRAIN_VAL",
-            "LEAKAGE_NEAR_TRAIN_TEST"
+            "LEAKAGE_EXACT_TRAIN_TEST"
           ]
         },
         "severity": {

@@ -53,7 +53,6 @@ class NearDuplicatesConfig:
 @dataclass(frozen=True)
 class LeakageConfig:
     enabled: bool = True
-    include_near_dup: bool = False
 
 
 @dataclass(frozen=True)
@@ -193,20 +192,19 @@ def _parse_near_duplicates(payload: dict[str, Any]) -> NearDuplicatesConfig:
 
 
 def _parse_leakage(payload: dict[str, Any]) -> LeakageConfig:
-    _reject_unknown_keys("checks.leakage", payload, {"enabled", "include_near_dup"})
-    return LeakageConfig(
-        enabled=_as_bool("checks.leakage.enabled", payload.get("enabled", True)),
-        include_near_dup=_as_bool("checks.leakage.include_near_dup", payload.get("include_near_dup", False)),
-    )
+    _reject_unknown_keys("checks.leakage", payload, {"enabled"})
+    return LeakageConfig(enabled=_as_bool("checks.leakage.enabled", payload.get("enabled", True)))
 
 
-def load_config(path: Path) -> DQAConfig:
+def load_config(path: Path | None = None) -> DQAConfig:
     if yaml is None:
         raise ConfigError("PyYAML is required to load dqa.yaml. Install with: pip install pyyaml")
-    if not path.exists():
-        raise ConfigError(f"Config file not found: {path}")
-
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if path is None:
+        raw: Any = {"version": 1, "fail_on": "high", "checks": {}}
+    else:
+        if not path.exists():
+            raise ConfigError(f"Config file not found: {path}")
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     root = _expect_dict("config", raw or {})
 
     _reject_unknown_keys("config", root, _EXPECTED_TOP_KEYS)

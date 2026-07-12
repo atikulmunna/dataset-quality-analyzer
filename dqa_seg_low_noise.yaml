@@ -31,4 +31,3 @@ checks:
 
   leakage:
     enabled: true
-    include_near_dup: false

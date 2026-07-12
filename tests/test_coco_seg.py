@@ -58,3 +58,58 @@ def test_build_index_from_coco_bbox_fallback(tmp_path: Path) -> None:
     assert ann["annotation_type"] == "bbox"
     assert 0 <= ann["x_center"] <= 1
     assert 0 <= ann["width"] <= 1
+
+
+def test_coco_uses_first_polygon_for_geometry(tmp_path: Path) -> None:
+    train = tmp_path / "train"
+    train.mkdir(parents=True)
+    (train / "sample.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+    payload = {
+        "images": [{"id": 1, "file_name": "sample.png", "width": 100, "height": 100}],
+        "categories": [{"id": 1, "name": "object"}],
+        "annotations": [
+            {
+                "id": 1,
+                "image_id": 1,
+                "category_id": 1,
+                "segmentation": [
+                    [10, 10, 20, 10, 20, 20],
+                    [50, 50, 90, 50, 90, 90],
+                ],
+                "bbox": [10, 10, 80, 80],
+            }
+        ],
+    }
+    (train / "_annotations.coco.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    annotation = build_index_from_coco(tmp_path, requested_splits=["train"]).payload["images"][0]["label_rows"][0]
+
+    assert annotation["annotation_type"] == "segment"
+    assert annotation["width"] == 0.1
+    assert annotation["height"] == 0.1
+
+
+def test_coco_rle_uses_bbox_fallback(tmp_path: Path) -> None:
+    train = tmp_path / "train"
+    train.mkdir(parents=True)
+    (train / "sample.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+    payload = {
+        "images": [{"id": 1, "file_name": "sample.png", "width": 100, "height": 100}],
+        "categories": [{"id": 1, "name": "object"}],
+        "annotations": [
+            {
+                "id": 1,
+                "image_id": 1,
+                "category_id": 1,
+                "segmentation": {"counts": "encoded", "size": [100, 100]},
+                "bbox": [10, 20, 30, 40],
+            }
+        ],
+    }
+    (train / "_annotations.coco.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    annotation = build_index_from_coco(tmp_path, requested_splits=["train"]).payload["images"][0]["label_rows"][0]
+
+    assert annotation["annotation_type"] == "bbox"
+    assert annotation["width"] == 0.3
+    assert annotation["height"] == 0.4

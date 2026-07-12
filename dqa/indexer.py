@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .io_yolo import DatasetSpec
+from .io_yolo import DatasetSpec, DatasetSpecError
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -290,7 +290,7 @@ def _discover_coco_files(source: Path) -> tuple[Path, list[tuple[str, Path]]]:
         split_files.append((split, path))
 
     if not split_files:
-        raise ValueError("No COCO annotation json files found (expected per-split COCO exports).")
+        raise DatasetSpecError("No COCO annotation JSON files found (expected per-split COCO exports).")
 
     split_files.sort(key=lambda x: (x[0], str(x[1])))
     return root.resolve(), split_files
@@ -317,7 +317,10 @@ def build_index_from_coco(source: Path, requested_splits: list[str] | None = Non
     for split, ann_file in split_files:
         if split not in include_splits:
             continue
-        payload = json.loads(ann_file.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(ann_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise DatasetSpecError(f"Invalid COCO JSON: {ann_file}") from exc
         if not isinstance(payload, dict):
             continue
         parsed_payloads.append((split, ann_file, payload))
@@ -330,7 +333,7 @@ def build_index_from_coco(source: Path, requested_splits: list[str] | None = Non
             category_names_by_id.setdefault(cid, cname)
 
     if not parsed_payloads:
-        raise ValueError("No COCO split annotation files matched requested splits.")
+        raise DatasetSpecError("No COCO split annotation files matched requested splits.")
 
     sorted_cat_ids = sorted(category_names_by_id)
     class_index_by_cat_id = {cid: idx for idx, cid in enumerate(sorted_cat_ids)}

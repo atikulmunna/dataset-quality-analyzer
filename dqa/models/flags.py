@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any
 
 from .common import Severity
@@ -18,12 +18,3 @@ class Finding:
     class_id: int | None = None
     metrics: dict[str, Any] | None = None
     suggested_action: str | None = None
-
-
-@dataclass(frozen=True)
-class FlagsArtifact:
-    schema_version: str
-    findings: list[Finding]
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)

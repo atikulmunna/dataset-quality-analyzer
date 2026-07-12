@@ -24,4 +24,3 @@ checks:
     phash_hamming_threshold: 8
   leakage:
     enabled: true
-    include_near_dup: false
