@@ -139,6 +139,23 @@ resource "aws_dynamodb_table" "state" {
     type = "S"
   }
 
+  attribute {
+    name = "owner_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "owner-created-index"
+    hash_key        = "owner_id"
+    range_key       = "created_at"
+    projection_type = "ALL"
+  }
+
   ttl {
     attribute_name = "ttl"
     enabled        = true
@@ -185,4 +202,3 @@ resource "aws_ecr_lifecycle_policy" "worker" {
     }]
   })
 }
-

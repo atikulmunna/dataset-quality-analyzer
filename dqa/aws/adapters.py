@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import json
 from typing import Any
 
+from dqa.web.artifacts import StoredArtifact
 from dqa.web.jobs import JobRecord, SecurityEvent
 from dqa.web.uploads import PresignedPost
 
@@ -140,6 +141,17 @@ class DynamoJobStore:
     def get(self, job_id: str) -> JobRecord | None:
         response = self._table.get_item(Key={"pk": f"JOB#{job_id}"}, ConsistentRead=True)
         return _job_from_item(response.get("Item"))
+
+    def list_owned(self, owner_id: str, *, limit: int) -> list[JobRecord]:
+        response = self._table.query(
+            IndexName="owner-created-index",
+            KeyConditionExpression="#owner = :owner",
+            ExpressionAttributeNames={"#owner": "owner_id"},
+            ExpressionAttributeValues={":owner": owner_id},
+            ScanIndexForward=False,
+            Limit=limit,
+        )
+        return [job for item in response.get("Items", []) if (job := _job_from_item(item)) is not None]
 
     def replace(self, job: JobRecord) -> None:
         current = self.get(job.job_id)
@@ -295,6 +307,32 @@ class S3UploadPostSigner:
             ExpiresIn=expires_in_seconds,
         )
         return PresignedPost(url=response["url"], fields=dict(response["fields"]))
+
+
+class S3JobObjectStore:
+    def __init__(self, client: Any, *, bucket: str) -> None:
+        self._client = client
+        self._bucket = bucket
+
+    def list_objects(self, prefix: str) -> list[StoredArtifact]:
+        response = self._client.list_objects_v2(Bucket=self._bucket, Prefix=prefix, MaxKeys=20)
+        return [
+            StoredArtifact(key=item["Key"], size=int(item["Size"]))
+            for item in response.get("Contents", [])
+            if isinstance(item.get("Key"), str)
+        ]
+
+    def presign_download(self, key: str, *, expires_in_seconds: int) -> str:
+        return str(
+            self._client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self._bucket, "Key": key},
+                ExpiresIn=expires_in_seconds,
+            )
+        )
+
+    def delete_object(self, key: str) -> None:
+        self._client.delete_object(Bucket=self._bucket, Key=key)
 
 
 class JsonSecurityEventSink:

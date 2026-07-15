@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12130f">
+  <meta name="description" content="DQA helps computer-vision teams find dataset quality issues before training.">
+  <title>DQA — Dataset Quality Analyzer</title>
+  <link rel="icon" type="image/png" href="logo.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand">
+        <img class="brand-mark" src="logo.png" alt="">
+        <span>
+          <strong>DQA</strong>
+          <small>Dataset intelligence</small>
+        </span>
+      </div>
+
+      <nav class="primary-nav">
+        <button class="nav-item active" type="button" data-view="overview" aria-current="page">
+          <span class="nav-icon" aria-hidden="true">01</span>
+          Overview
+        </button>
+        <button class="nav-item" type="button" data-view="new-audit">
+          <span class="nav-icon" aria-hidden="true">02</span>
+          New audit
+        </button>
+        <button class="nav-item" type="button" data-view="runs">
+          <span class="nav-icon" aria-hidden="true">03</span>
+          Audit history
+        </button>
+        <button class="nav-item" type="button" data-view="compare">
+          <span class="nav-icon" aria-hidden="true">04</span>
+          Compare runs
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="usage-card">
+          <div class="usage-heading">
+            <span>Alpha allowance</span>
+            <strong>1 of 2</strong>
+          </div>
+          <div class="usage-track"><span></span></div>
+          <p>One audit running and one queued per account.</p>
+        </div>
+        <button class="support-link" type="button" id="retentionButton">
+          <span aria-hidden="true">?</span>
+          Retention &amp; privacy
+        </button>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <button class="mobile-menu" type="button" id="mobileMenu" aria-label="Open navigation" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="environment-pill" id="environmentLabel">
+          <span></span>
+          Preview environment
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-button" type="button" id="themeToggle" aria-label="Use dark theme" title="Toggle color theme">
+            <span class="theme-symbol" aria-hidden="true"></span>
+          </button>
+          <button class="account-button" type="button" id="accountButton" aria-label="Account menu">
+            <span class="avatar">AM</span>
+            <span class="account-copy">
+              <strong id="accountName">Atikul Munna</strong>
+              <small id="accountStatus">Private alpha</small>
+            </span>
+            <span class="chevron" aria-hidden="true"></span>
+          </button>
+        </div>
+      </header>
+
+      <main id="main-content">
+        <section class="view active" id="view-overview" data-view-panel="overview">
+          <div class="page-heading overview-heading">
+            <div>
+              <p class="eyebrow">Quality control</p>
+              <h1>Review dataset quality before training.</h1>
+              <p class="page-intro">Upload a YOLO or COCO dataset. DQA inspects integrity, leakage, duplicates, geometry, and class balance without changing a single source file.</p>
+            </div>
+            <button class="primary-button compact" type="button" data-go-to="new-audit">
+              Start an audit
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
+
+          <div class="metric-strip" aria-label="Workspace summary">
+            <article>
+              <span class="metric-label">Datasets audited</span>
+              <strong>12</strong>
+              <small><span class="trend up">↑ 3</span> this month</small>
+            </article>
+            <article>
+              <span class="metric-label">Issues surfaced</span>
+              <strong>187</strong>
+              <small>14 high priority</small>
+            </article>
+            <article>
+              <span class="metric-label">Potential leakage</span>
+              <strong>0.8%</strong>
+              <small><span class="trend down">↓ 1.4%</span> from baseline</small>
+            </article>
+            <article>
+              <span class="metric-label">Storage lifecycle</span>
+              <strong>Healthy</strong>
+              <small>Next cleanup in 7h</small>
+            </article>
+          </div>
+
+          <div class="overview-grid">
+            <article class="panel pulse-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Latest dataset</p>
+                  <h2>Latest audit</h2>
+                </div>
+                <button class="text-button" type="button" data-go-to="runs">View run <span aria-hidden="true">↗</span></button>
+              </div>
+              <div class="pulse-content">
+                <div class="score-ring" role="img" aria-label="Dataset quality score 92 out of 100">
+                  <div><strong>92</strong><span>/100</span></div>
+                </div>
+                <div class="pulse-copy">
+                  <strong>Production ready, with two cautions.</strong>
+                  <p>Annotation integrity is strong. Review the class imbalance and near-duplicate cluster before the next training cycle.</p>
+                  <div class="finding-chips">
+                    <span class="severity high"><i></i> 2 high</span>
+                    <span class="severity medium"><i></i> 7 medium</span>
+                    <span class="severity low"><i></i> 18 low</span>
+                  </div>
+                </div>
+              </div>
+              <div class="quality-bars">
+                <div><span>Integrity</span><b><i style="width:98%"></i></b><strong>98</strong></div>
+                <div><span>Leakage</span><b><i style="width:96%"></i></b><strong>96</strong></div>
+                <div><span>Balance</span><b><i style="width:74%"></i></b><strong>74</strong></div>
+                <div><span>Geometry</span><b><i style="width:91%"></i></b><strong>91</strong></div>
+              </div>
+            </article>
+
+            <article class="panel action-panel">
+              <div class="action-accent" aria-hidden="true"></div>
+              <p class="eyebrow">Recommended follow-up</p>
+              <h2>Audit the revised labels</h2>
+              <p>Compare the next export against <strong>street-scenes-v8</strong> to catch regressions before training.</p>
+              <div class="mini-timeline">
+                <span class="done"></span><i></i><span class="done"></span><i></i><span></span>
+              </div>
+              <div class="timeline-labels"><span>Uploaded</span><span>Reviewed</span><span>Re-audit</span></div>
+              <button class="secondary-button full" type="button" data-go-to="new-audit">Audit revised dataset</button>
+            </article>
+          </div>
+
+          <article class="panel recent-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Workspace activity</p>
+                <h2>Recent audits</h2>
+              </div>
+              <button class="text-button" type="button" data-go-to="runs">View all runs <span aria-hidden="true">→</span></button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Dataset</th><th>Preset</th><th>Images</th><th>Findings</th><th>Status</th><th>Completed</th><th><span class="sr-only">Actions</span></th></tr></thead>
+                <tbody id="recentRunsBody"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="view" id="view-new-audit" data-view-panel="new-audit">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">New audit</p>
+              <h1>Inspect a dataset.</h1>
+              <p class="page-intro">Source files remain read-only and expire automatically after processing.</p>
+            </div>
+            <div class="step-indicator" aria-label="Audit setup progress">
+              <span class="active">1</span><i></i><span>2</span><i></i><span>3</span>
+            </div>
+          </div>
+
+          <div class="audit-layout">
+            <form class="panel audit-form" id="auditForm">
+              <section class="form-section">
+                <div class="section-number">01</div>
+                <div class="section-content">
+                  <div class="section-heading">
+                    <div><h2>Upload dataset</h2><p>One ZIP containing YOLO or COCO data.</p></div>
+                    <span class="limit-pill">2 GiB max</span>
+                  </div>
+                  <label class="dropzone" id="dropzone" for="datasetFile">
+                    <input type="file" id="datasetFile" name="dataset" accept=".zip,application/zip">
+                    <span class="upload-glyph" aria-hidden="true"><i></i></span>
+                    <strong>Drop your dataset here</strong>
+                    <span>or <u>browse files</u> from your computer</span>
+                    <small>ZIP only · 10 GiB extracted limit · encrypted archives rejected</small>
+                  </label>
+                  <div class="selected-file" id="selectedFile" hidden>
+                    <span class="file-badge">ZIP</span>
+                    <span><strong id="fileName"></strong><small id="fileMeta"></small></span>
+                    <button type="button" id="removeFile" aria-label="Remove selected file">×</button>
+                  </div>
+                  <button class="sample-link" type="button" id="sampleDataset">Use a sample dataset for this preview</button>
+                </div>
+              </section>
+
+              <section class="form-section">
+                <div class="section-number">02</div>
+                <div class="section-content">
+                  <div class="section-heading"><div><h2>Choose audit profile</h2><p>Profiles tune checks without hiding the underlying findings.</p></div></div>
+                  <div class="preset-grid">
+                    <label class="preset-card selected">
+                      <input type="radio" name="preset" value="detection" checked>
+                      <span class="preset-symbol detection" aria-hidden="true"><i></i></span>
+                      <strong>Detection</strong>
+                      <small>Boxes, labels, balance, leakage</small>
+                      <b></b>
+                    </label>
+                    <label class="preset-card">
+                      <input type="radio" name="preset" value="segmentation">
+                      <span class="preset-symbol segmentation" aria-hidden="true"><i></i><i></i><i></i></span>
+                      <strong>Segmentation</strong>
+                      <small>Polygon and mask-aware checks</small>
+                      <b></b>
+                    </label>
+                    <label class="preset-card">
+                      <input type="radio" name="preset" value="segmentation_low_noise">
+                      <span class="preset-symbol low-noise" aria-hidden="true"><i></i></span>
+                      <strong>Low-noise</strong>
+                      <small>Segmentation without box noise</small>
+                      <b></b>
+                    </label>
+                  </div>
+                </div>
+              </section>
+
+              <section class="form-section last">
+                <div class="section-number">03</div>
+                <div class="section-content">
+                  <div class="section-heading"><div><h2>Set quality gate</h2><p>Choose when this audit should be considered unsuccessful.</p></div></div>
+                  <div class="settings-grid">
+                    <label class="field-label" for="failOn">Fail audit at
+                      <span class="select-wrap"><select id="failOn" name="fail_on"><option value="critical">Critical findings</option><option value="high" selected>High findings</option><option value="medium">Medium findings</option><option value="low">Any finding</option></select></span>
+                    </label>
+                    <label class="switch-row">
+                      <span><strong>Near-duplicate analysis</strong><small>Available up to 5,000 images</small></span>
+                      <input type="checkbox" id="nearDuplicates" name="near_duplicates"><i></i>
+                    </label>
+                  </div>
+                </div>
+              </section>
+
+              <div class="form-footer">
+                <div class="privacy-note"><span aria-hidden="true">✓</span><p><strong>Read-only by design</strong><small>Your source archive is never modified.</small></p></div>
+                <button class="primary-button" type="submit" id="runAudit">Run dataset audit <span aria-hidden="true">→</span></button>
+              </div>
+            </form>
+
+            <aside class="audit-aside">
+              <article class="panel estimate-card">
+                <p class="eyebrow">Before you run</p>
+                <h2>Audit envelope</h2>
+                <dl><div><dt>Maximum images</dt><dd>25,000</dd></div><div><dt>Maximum runtime</dt><dd>2 hours</dd></div><div><dt>Artifact retention</dt><dd>7 days</dd></div><div><dt>Worker concurrency</dt><dd>1 global</dd></div></dl>
+                <div class="cost-note"><span>$</span><p><strong>Cost controlled</strong><small>Admission closes automatically at the project spending cutoff.</small></p></div>
+              </article>
+              <article class="panel help-card">
+                <span class="help-mark">i</span>
+                <div><h3>Preparing your ZIP</h3><p>Include one <code>data.yaml</code> for YOLO, or COCO annotation JSON files.</p><button type="button" class="text-button" id="formatHelp">View supported layouts</button></div>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="view-runs" data-view-panel="runs">
+          <div class="page-heading">
+            <div><p class="eyebrow">Audit history</p><h1>Audit history.</h1><p class="page-intro">Track status, review findings, and keep the job ID for operational support.</p></div>
+            <button class="primary-button compact" type="button" data-go-to="new-audit">New audit <span aria-hidden="true">+</span></button>
+          </div>
+          <article class="panel runs-panel">
+            <div class="runs-toolbar">
+              <label class="search-field"><span aria-hidden="true"></span><input type="search" id="runSearch" placeholder="Search dataset or job ID" aria-label="Search audit history"></label>
+              <div class="filter-group" role="group" aria-label="Filter runs"><button class="active" type="button" data-filter="all">All</button><button type="button" data-filter="succeeded">Succeeded</button><button type="button" data-filter="running">In progress</button><button type="button" data-filter="failed">Failed</button></div>
+            </div>
+            <div class="table-wrap full-table"><table><thead><tr><th>Dataset</th><th>Job ID</th><th>Preset</th><th>Findings</th><th>Status</th><th>Updated</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody id="allRunsBody"></tbody></table></div>
+          </article>
+        </section>
+
+        <section class="view" id="view-compare" data-view-panel="compare">
+          <div class="page-heading">
+            <div><p class="eyebrow">Compare runs</p><h1>Compare dataset revisions.</h1><p class="page-intro">Choose two completed audits to surface regressions and improvements.</p></div>
+          </div>
+          <article class="panel compare-panel">
+            <div class="compare-selectors">
+              <label><span>Baseline run</span><select id="compareOld"><option value="v7">street-scenes-v7 · 08 Jul</option><option value="retail">retail-shelf-v4 · 02 Jul</option></select></label>
+              <span class="compare-arrow" aria-hidden="true">→</span>
+              <label><span>Current run</span><select id="compareNew"><option value="v8">street-scenes-v8 · 14 Jul</option><option value="warehouse">warehouse-v2 · 10 Jul</option></select></label>
+              <button class="primary-button compact" type="button" id="compareButton">Compare</button>
+            </div>
+            <div class="comparison-summary" id="comparisonSummary">
+              <div class="comparison-score"><span>Quality score</span><p><del>86</del><strong>92</strong><b>+6</b></p></div>
+              <div><span>High findings</span><strong>−4</strong><small>Improved</small></div>
+              <div><span>Leakage pairs</span><strong>−18</strong><small>Improved</small></div>
+              <div><span>Class imbalance</span><strong>+1</strong><small class="regression">Regression</small></div>
+            </div>
+            <div class="compare-findings">
+              <h2>Meaningful changes</h2>
+              <article class="change-row improvement"><span>↓</span><div><strong>Cross-split duplicate leakage</strong><p>18 duplicate pairs removed across train and validation splits.</p></div><b>Improved</b></article>
+              <article class="change-row improvement"><span>↓</span><div><strong>Malformed segmentation geometry</strong><p>All 4 invalid polygons from the baseline are resolved.</p></div><b>Improved</b></article>
+              <article class="change-row regression"><span>↑</span><div><strong>Class representation drift</strong><p>The bicycle class fell below the recommended instance share.</p></div><b>Review</b></article>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"><span>✓</span><p><strong id="toastTitle"></strong><small id="toastMessage"></small></p></div>
+
+  <dialog id="infoDialog">
+    <button class="dialog-close" type="button" aria-label="Close">×</button>
+    <p class="eyebrow" id="dialogEyebrow">Private alpha</p>
+    <h2 id="dialogTitle">Retention &amp; privacy</h2>
+    <div id="dialogBody"></div>
+  </dialog>
+
+  <div class="progress-drawer" id="progressDrawer" aria-live="polite" hidden>
+    <div class="drawer-heading"><div><p class="eyebrow">Audit in progress</p><h2 id="progressDataset">dataset.zip</h2></div><span class="live-dot">Live</span></div>
+    <div class="overall-progress"><span id="progressBar"></span></div>
+    <ol class="progress-steps">
+      <li class="active" data-progress-step="upload"><i></i><span><strong>Secure upload</strong><small>Preparing archive</small></span><b>0%</b></li>
+      <li data-progress-step="queue"><i></i><span><strong>Queue audit</strong><small>Waiting for worker</small></span><b>—</b></li>
+      <li data-progress-step="audit"><i></i><span><strong>Analyze quality</strong><small>Integrity, leakage, balance</small></span><b>—</b></li>
+      <li data-progress-step="report"><i></i><span><strong>Build report</strong><small>Summary and findings</small></span><b>—</b></li>
+    </ol>
+    <p class="drawer-note">You can leave this page. The audit continues asynchronously.</p>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import get_args, get_type_hints
 
 from dqa.web.api import handle_request
 from dqa.web.jobs import JobRecord, JobRequest, JobService, SecurityEvent
 from dqa.web.lifecycle import JobLifecycle
+from dqa.web.artifacts import JobArtifactService, StoredArtifact
 
 
 class MemoryStore:
@@ -44,6 +46,13 @@ class MemoryStore:
 
     def get(self, job_id: str) -> JobRecord | None:
         return self.jobs.get(job_id)
+
+    def list_owned(self, owner_id: str, *, limit: int) -> list[JobRecord]:
+        return sorted(
+            (job for job in self.jobs.values() if job.owner_id == owner_id),
+            key=lambda job: job.created_at,
+            reverse=True,
+        )[:limit]
 
     def replace(self, job: JobRecord) -> None:
         self.jobs[job.job_id] = job
@@ -85,6 +94,21 @@ class TestRateLimiter:
     def allow(self, owner_id: str, action: str) -> bool:
         self.calls.append((owner_id, action))
         return self.allowed
+
+
+class MemoryObjects:
+    def __init__(self) -> None:
+        self.items: list[StoredArtifact] = []
+        self.deleted: list[str] = []
+
+    def list_objects(self, prefix: str) -> list[StoredArtifact]:
+        return [item for item in self.items if item.key.startswith(prefix)]
+
+    def presign_download(self, key: str, *, expires_in_seconds: int) -> str:
+        return f"https://download.example/{key}?ttl={expires_in_seconds}"
+
+    def delete_object(self, key: str) -> None:
+        self.deleted.append(key)
 
 
 def _service(*, queue_failure: bool = False) -> tuple[JobService, MemoryStore, RecordingQueue, EventLog]:
@@ -153,6 +177,76 @@ def test_status_is_owner_scoped_and_hides_cross_user_job() -> None:
     assert own["statusCode"] == 200
     assert other["statusCode"] == 404
     assert events.events[-1].reason == "not_found_or_unowned"
+
+
+def test_list_jobs_is_owner_scoped_and_filters_completed_comparison_inputs() -> None:
+    service, store, _, _ = _service()
+    first = service.submit("user-1", JobRequest(dataset_key="uploads/user-1/first.zip"))
+    store.jobs[first.job_id] = replace(first, status="succeeded")
+    other = replace(first, job_id="job-other", owner_id="user-2", dataset_key="uploads/user-2/other.zip")
+    store.jobs[other.job_id] = other
+
+    response = handle_request(
+        {**_event("GET", "/jobs"), "queryStringParameters": {"status": "succeeded", "limit": "20"}},
+        service,
+        TestRateLimiter(),
+    )
+
+    assert response["statusCode"] == 200
+    assert [item["job_id"] for item in _body(response)["jobs"]] == [first.job_id]
+
+
+def test_owner_can_list_artifacts_without_receiving_storage_keys() -> None:
+    service, store, _, _ = _service()
+    job = service.submit("user-1", JobRequest(dataset_key="uploads/user-1/data.zip"))
+    completed = replace(
+        job,
+        status="succeeded",
+        attempt=1,
+        result_prefix="artifacts/user-1/job-1/attempt-1/",
+    )
+    store.jobs[job.job_id] = completed
+    objects = MemoryObjects()
+    objects.items.append(StoredArtifact(key=f"{completed.result_prefix}summary.json", size=128))
+
+    response = handle_request(
+        _event("GET", "/jobs/job-1/artifacts"),
+        service,
+        TestRateLimiter(),
+        artifacts=JobArtifactService(objects),
+    )
+
+    artifact = _body(response)["artifacts"][0]
+    assert response["statusCode"] == 200
+    assert artifact["name"] == "summary.json"
+    assert artifact["expires_in"] == 300
+    assert "key" not in artifact
+
+
+def test_source_deletion_is_owner_scoped_and_rejects_active_jobs() -> None:
+    service, store, _, _ = _service()
+    job = service.submit("user-1", JobRequest(dataset_key="uploads/user-1/data.zip"))
+    objects = MemoryObjects()
+    artifacts = JobArtifactService(objects)
+
+    active = handle_request(
+        _event("DELETE", "/jobs/job-1/source"), service, TestRateLimiter(), artifacts=artifacts
+    )
+    store.jobs[job.job_id] = replace(job, status="failed")
+    other = handle_request(
+        _event("DELETE", "/jobs/job-1/source", owner="user-2"),
+        service,
+        TestRateLimiter(),
+        artifacts=artifacts,
+    )
+    deleted = handle_request(
+        _event("DELETE", "/jobs/job-1/source"), service, TestRateLimiter(), artifacts=artifacts
+    )
+
+    assert active["statusCode"] == 409
+    assert other["statusCode"] == 404
+    assert deleted["statusCode"] == 204
+    assert objects.deleted == ["uploads/user-1/data.zip"]
 
 
 def test_api_rejects_unauthenticated_and_unowned_inputs() -> None:

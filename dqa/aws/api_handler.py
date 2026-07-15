@@ -6,6 +6,7 @@ import os
 from typing import Any
 
 from dqa.web.api import ApiResponse, handle_request
+from dqa.web.artifacts import JobArtifactService
 from dqa.web.jobs import JobService
 from dqa.web.lifecycle import JobLifecycle
 from dqa.web.security import FixedWindowRateLimiter
@@ -19,10 +20,11 @@ from .adapters import (
     DynamoRateLimitCounter,
     JsonSecurityEventSink,
     S3UploadPostSigner,
+    S3JobObjectStore,
 )
 
 
-_runtime: tuple[JobService, JobLifecycle, FixedWindowRateLimiter, UploadService] | None = None
+_runtime: tuple[JobService, JobLifecycle, FixedWindowRateLimiter, UploadService, JobArtifactService] | None = None
 
 
 def _required(name: str) -> str:
@@ -32,7 +34,7 @@ def _required(name: str) -> str:
     return value
 
 
-def _build_runtime() -> tuple[JobService, JobLifecycle, FixedWindowRateLimiter, UploadService]:
+def _build_runtime() -> tuple[JobService, JobLifecycle, FixedWindowRateLimiter, UploadService, JobArtifactService]:
     import boto3
 
     table = boto3.resource("dynamodb").Table(_required("DQA_TABLE_NAME"))
@@ -47,10 +49,11 @@ def _build_runtime() -> tuple[JobService, JobLifecycle, FixedWindowRateLimiter, 
     limiter = FixedWindowRateLimiter(DynamoRateLimitCounter(table))
     jobs = JobService(store, queue, security_events=JsonSecurityEventSink())
     lifecycle = JobLifecycle(store)
-    uploads = UploadService(
-        S3UploadPostSigner(boto3.client("s3"), bucket=_required("DQA_DATA_BUCKET"))
-    )
-    return jobs, lifecycle, limiter, uploads
+    s3 = boto3.client("s3")
+    bucket = _required("DQA_DATA_BUCKET")
+    uploads = UploadService(S3UploadPostSigner(s3, bucket=bucket))
+    artifacts = JobArtifactService(S3JobObjectStore(s3, bucket=bucket))
+    return jobs, lifecycle, limiter, uploads, artifacts
 
 
 def handler(event: dict[str, Any], _context: object) -> dict[str, object]:
@@ -59,8 +62,7 @@ def handler(event: dict[str, Any], _context: object) -> dict[str, object]:
         return ApiResponse(200, {"status": "ok"}).to_lambda()
     if _runtime is None:
         _runtime = _build_runtime()
-    jobs, lifecycle, limiter, uploads = _runtime
+    jobs, lifecycle, limiter, uploads, artifacts = _runtime
     if event.get("rawPath") == "/uploads":
         return handle_upload_request(event, uploads, limiter)
-    return handle_request(event, jobs, limiter, lifecycle)
-
+    return handle_request(event, jobs, limiter, lifecycle, artifacts)

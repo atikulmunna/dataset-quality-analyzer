@@ -31,6 +31,7 @@ resource "aws_iam_role_policy" "api" {
         Action = [
           "dynamodb:GetItem",
           "dynamodb:PutItem",
+          "dynamodb:Query",
           "dynamodb:UpdateItem",
           "dynamodb:TransactWriteItems"
         ]
@@ -52,6 +53,27 @@ resource "aws_iam_role_policy" "api" {
         Sid      = "PresignedOwnerUploads"
         Effect   = "Allow"
         Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.data.arn}/uploads/*"
+      },
+      {
+        Sid      = "ListJobArtifacts"
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.data.arn
+        Condition = {
+          StringLike = { "s3:prefix" = ["artifacts/*"] }
+        }
+      },
+      {
+        Sid      = "DownloadArtifacts"
+        Effect   = "Allow"
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.data.arn}/artifacts/*"
+      },
+      {
+        Sid      = "DeleteOwnedSources"
+        Effect   = "Allow"
+        Action   = "s3:DeleteObject"
         Resource = "${aws_s3_bucket.data.arn}/uploads/*"
       }
     ]

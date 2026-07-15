@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from .artifacts import JobArtifactService
 from .jobs import IdempotencyConflictError, JobInputError, JobQuotaError, JobRequest, JobService
 from .lifecycle import JobLifecycle
 
@@ -36,6 +37,7 @@ def handle_request(
     jobs: JobService,
     rate_limiter: RateLimiter,
     lifecycle: JobLifecycle | None = None,
+    artifacts: JobArtifactService | None = None,
 ) -> dict[str, object]:
     auth = auth_context(event)
     if auth is None:
@@ -72,6 +74,53 @@ def handle_request(
         except Exception:
             return ApiResponse(503, {"error": "enqueue_unavailable"}).to_lambda()
         return ApiResponse(202, {"job": job.to_dict()}).to_lambda()
+
+    if method == "GET" and path == "/jobs":
+        parameters = event.get("queryStringParameters") or {}
+        if not isinstance(parameters, dict):
+            return ApiResponse(400, {"error": "invalid_request"}).to_lambda()
+        try:
+            status = parameters.get("status")
+            if status is not None and not isinstance(status, str):
+                raise JobInputError("status is invalid.")
+            raw_limit = parameters.get("limit", "50")
+            limit = int(raw_limit) if isinstance(raw_limit, str) else 0
+            owned = jobs.list_owned(auth.owner_id, status=status, limit=limit)  # type: ignore[arg-type]
+        except (JobInputError, ValueError):
+            return ApiResponse(400, {"error": "invalid_request"}).to_lambda()
+        return ApiResponse(200, {"jobs": [job.to_dict() for job in owned]}).to_lambda()
+
+    if method == "GET" and path.startswith("/jobs/") and path.endswith("/artifacts"):
+        job_id = path.removeprefix("/jobs/").removesuffix("/artifacts")
+        if not job_id or "/" in job_id:
+            return ApiResponse(404, {"error": "not_found"}).to_lambda()
+        job = jobs.get_owned(auth.owner_id, job_id)
+        if job is None:
+            return ApiResponse(404, {"error": "not_found"}).to_lambda()
+        if artifacts is None:
+            return ApiResponse(503, {"error": "artifacts_unavailable"}).to_lambda()
+        try:
+            downloads = artifacts.list_downloads(auth.owner_id, job)
+        except Exception:
+            return ApiResponse(503, {"error": "artifacts_unavailable"}).to_lambda()
+        return ApiResponse(200, {"artifacts": downloads}).to_lambda()
+
+    if method == "DELETE" and path.startswith("/jobs/") and path.endswith("/source"):
+        job_id = path.removeprefix("/jobs/").removesuffix("/source")
+        if not job_id or "/" in job_id:
+            return ApiResponse(404, {"error": "not_found"}).to_lambda()
+        job = jobs.get_owned(auth.owner_id, job_id)
+        if job is None:
+            return ApiResponse(404, {"error": "not_found"}).to_lambda()
+        if artifacts is None:
+            return ApiResponse(503, {"error": "source_deletion_unavailable"}).to_lambda()
+        try:
+            artifacts.delete_source(auth.owner_id, job)
+        except ValueError as exc:
+            return ApiResponse(409, {"error": "source_in_use", "message": str(exc)}).to_lambda()
+        except Exception:
+            return ApiResponse(503, {"error": "source_deletion_unavailable"}).to_lambda()
+        return ApiResponse(204, {}).to_lambda()
 
     if method == "GET" and path.startswith("/jobs/"):
         job_id = path.removeprefix("/jobs/")

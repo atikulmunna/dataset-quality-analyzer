@@ -181,6 +181,7 @@ pytest -q
 - [docs/CONTAINERS.md](docs/CONTAINERS.md): production worker image and local container acceptance check
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): manual, smoke-gated AWS release and rollback procedure
 - [docs/OPERATIONS.md](docs/OPERATIONS.md): alarms, job-ID diagnostics, retention, recovery, and incident response
+- [web/README.md](web/README.md): hosted browser interface, preview build, and live-integration boundary
 - [infra/terraform/README.md](infra/terraform/README.md): reproducible, cost-capped AWS infrastructure
 - `schemas/`: machine-readable output contracts
 

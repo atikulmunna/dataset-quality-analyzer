@@ -6,6 +6,14 @@ output "ui_url" {
   value = "https://${aws_cloudfront_distribution.ui.domain_name}"
 }
 
+output "ui_bucket" {
+  value = aws_s3_bucket.ui.id
+}
+
+output "ui_distribution_id" {
+  value = aws_cloudfront_distribution.ui.id
+}
+
 output "cognito_hosted_ui_domain" {
   value = "https://${aws_cognito_user_pool_domain.users.domain}.auth.${var.aws_region}.amazoncognito.com"
 }

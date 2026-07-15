@@ -88,7 +88,7 @@ resource "aws_cognito_user_pool_client" "ui" {
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "dqa/jobs"]
-  callback_urls                        = ["https://${aws_cloudfront_distribution.ui.domain_name}/callback"]
+  callback_urls                        = ["https://${aws_cloudfront_distribution.ui.domain_name}/"]
   logout_urls                          = ["https://${aws_cloudfront_distribution.ui.domain_name}/"]
   supported_identity_providers         = ["COGNITO"]
   prevent_user_existence_errors        = "ENABLED"
@@ -140,7 +140,15 @@ resource "aws_apigatewayv2_integration" "api" {
 }
 
 locals {
-  protected_routes = toset(["POST /jobs", "GET /jobs/{job_id}", "DELETE /jobs/{job_id}", "POST /uploads"])
+  protected_routes = toset([
+    "POST /jobs",
+    "GET /jobs",
+    "GET /jobs/{job_id}",
+    "GET /jobs/{job_id}/artifacts",
+    "DELETE /jobs/{job_id}",
+    "DELETE /jobs/{job_id}/source",
+    "POST /uploads"
+  ])
 }
 
 resource "aws_apigatewayv2_route" "protected" {

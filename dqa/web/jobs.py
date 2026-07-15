@@ -96,6 +96,8 @@ class JobStore(Protocol):
 
     def get(self, job_id: str) -> JobRecord | None: ...
 
+    def list_owned(self, owner_id: str, *, limit: int) -> list[JobRecord]: ...
+
     def replace(self, job: JobRecord) -> None: ...
 
 
@@ -181,6 +183,19 @@ class JobService:
             return None
         self.record_event("job.read", "allowed", owner_id=owner_id, job_id=job_id)
         return job
+
+    def list_owned(self, owner_id: str, *, status: JobStatus | None = None, limit: int = 50) -> list[JobRecord]:
+        if not re.fullmatch(r"[A-Za-z0-9:_-]{1,200}", owner_id):
+            raise JobInputError("Authenticated owner is invalid.")
+        if status is not None and status not in {"queued", "running", "succeeded", "failed", "cancelled", "expired"}:
+            raise JobInputError("status is invalid.")
+        if not 1 <= limit <= 100:
+            raise JobInputError("limit must be between 1 and 100.")
+        jobs = self._store.list_owned(owner_id, limit=limit)
+        if status is not None:
+            jobs = [job for job in jobs if job.status == status]
+        self.record_event("job.list", "allowed", owner_id=owner_id)
+        return jobs[:limit]
 
     def record_event(
         self,

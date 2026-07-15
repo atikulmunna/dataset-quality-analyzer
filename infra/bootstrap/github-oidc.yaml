@@ -222,6 +222,7 @@ Resources:
                   - s3:PutBucketTagging
                   - s3:PutEncryptionConfiguration
                   - s3:PutLifecycleConfiguration
+                  - s3:PutObject
                   - sns:*
                 Resource: "*"
 

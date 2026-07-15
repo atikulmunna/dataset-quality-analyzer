@@ -66,8 +66,40 @@ else
 fi
 
 api_url="$(terraform -chdir="$module" output -raw api_url)"
+ui_url="$(terraform -chdir="$module" output -raw ui_url)"
+ui_bucket="$(terraform -chdir="$module" output -raw ui_bucket)"
+ui_distribution_id="$(terraform -chdir="$module" output -raw ui_distribution_id)"
+cognito_domain="$(terraform -chdir="$module" output -raw cognito_hosted_ui_domain)"
+cognito_client_id="$(terraform -chdir="$module" output -raw cognito_client_id)"
+
+python "$root/scripts/build_web.py" \
+  --mode live \
+  --api-base-url "$api_url" \
+  --cognito-domain "$cognito_domain" \
+  --cognito-client-id "$cognito_client_id" \
+  --cognito-redirect-uri "$ui_url/"
+
+aws s3 sync "$root/dist/web" "s3://$ui_bucket" \
+  --delete \
+  --cache-control "public,max-age=3600"
+aws s3 cp "$root/dist/web/index.html" "s3://$ui_bucket/index.html" \
+  --content-type "text/html" \
+  --cache-control "no-cache"
+aws s3 cp "$root/dist/web/config.js" "s3://$ui_bucket/config.js" \
+  --content-type "application/javascript" \
+  --cache-control "no-store"
+invalidation_id="$(aws cloudfront create-invalidation \
+  --distribution-id "$ui_distribution_id" \
+  --paths "/*" \
+  --query 'Invalidation.Id' \
+  --output text)"
+aws cloudfront wait invalidation-completed \
+  --distribution-id "$ui_distribution_id" \
+  --id "$invalidation_id"
+
 health_body="$(mktemp)"
-trap 'rm -f "$health_body"' EXIT
+ui_body="$(mktemp)"
+trap 'rm -f "$health_body" "$ui_body"' EXIT
 
 health_status="$(curl --silent --show-error --retry 5 --retry-all-errors \
   --retry-delay 2 --output "$health_body" --write-out '%{http_code}' \
@@ -75,6 +107,14 @@ health_status="$(curl --silent --show-error --retry 5 --retry-all-errors \
 if [[ "$health_status" != "200" ]] || ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' "$health_body"; then
   echo "health smoke failed with HTTP $health_status" >&2
   cat "$health_body" >&2
+  exit 1
+fi
+
+ui_status="$(curl --silent --show-error --retry 8 --retry-all-errors \
+  --retry-delay 3 --output "$ui_body" --write-out '%{http_code}' \
+  "$ui_url/")"
+if [[ "$ui_status" != "200" ]] || ! grep -q 'Dataset Quality Analyzer' "$ui_body"; then
+  echo "UI smoke failed with HTTP $ui_status" >&2
   exit 1
 fi
 
@@ -91,4 +131,5 @@ if [[ "$admission" != "false" ]]; then
   exit 1
 fi
 
-echo "$environment deployment passed health, authentication, and fail-closed admission smoke checks"
+echo "$environment deployment passed UI, health, authentication, and fail-closed admission smoke checks"
+echo "UI URL: $ui_url/"

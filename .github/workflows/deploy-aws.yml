@@ -58,6 +58,7 @@ jobs:
           python -m compileall -q dqa web_dashboard.py
           pytest -q
           python scripts/build_lambda.py
+          python scripts/build_web.py --mode preview
 
       - name: Build, exercise, and scan worker image
         run: python scripts/container_smoke.py --scan
