@@ -41,7 +41,7 @@ def handle_request(
     if auth is None:
         jobs.record_event("request.authenticate", "denied", reason="missing_subject")
         return ApiResponse(401, {"error": "unauthorized"}).to_lambda()
-    if "dqa:jobs" not in auth.scopes:
+    if "dqa/jobs" not in auth.scopes:
         jobs.record_event("request.authorize", "denied", owner_id=auth.owner_id, reason="missing_scope")
         return ApiResponse(403, {"error": "forbidden"}).to_lambda()
 

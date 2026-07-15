@@ -178,6 +178,9 @@ pytest -q
 - [wiki.md](wiki.md): implementation map for contributors
 - [BENCHMARKS.md](BENCHMARKS.md): development performance measurements and limits
 - [docs/ADR-001-aws-alpha.md](docs/ADR-001-aws-alpha.md): accepted hosted-alpha AWS architecture and cost envelope
+- [docs/CONTAINERS.md](docs/CONTAINERS.md): production worker image and local container acceptance check
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): manual, smoke-gated AWS release and rollback procedure
+- [infra/terraform/README.md](infra/terraform/README.md): reproducible, cost-capped AWS infrastructure
 - `schemas/`: machine-readable output contracts
 
 ## License

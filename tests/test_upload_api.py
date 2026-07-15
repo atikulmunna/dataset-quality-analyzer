@@ -20,7 +20,7 @@ class Limiter:
         return self.allowed and owner_id == "user-1" and action == "POST uploads"
 
 
-def _event(*, scope: str = "dqa:jobs", body: dict | None = None) -> dict:
+def _event(*, scope: str = "dqa/jobs", body: dict | None = None) -> dict:
     return {
         "rawPath": "/uploads",
         "body": json.dumps(body or {}),

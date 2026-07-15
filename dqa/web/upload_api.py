@@ -15,7 +15,7 @@ def handle_upload_request(
     auth = auth_context(event)
     if auth is None:
         return ApiResponse(401, {"error": "unauthorized"}).to_lambda()
-    if "dqa:jobs" not in auth.scopes:
+    if "dqa/jobs" not in auth.scopes:
         return ApiResponse(403, {"error": "forbidden"}).to_lambda()
     method = str(event.get("requestContext", {}).get("http", {}).get("method", "")).upper()
     if method != "POST" or event.get("rawPath") != "/uploads":

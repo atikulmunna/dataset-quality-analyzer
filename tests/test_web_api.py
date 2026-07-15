@@ -106,7 +106,7 @@ def _event(
     path: str,
     *,
     owner: str | None = "user-1",
-    scope: str = "dqa:jobs",
+    scope: str = "dqa/jobs",
     body: dict | str | None = None,
 ) -> dict:
     claims = {"sub": owner, "scope": scope} if owner else {}
