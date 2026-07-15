@@ -49,3 +49,8 @@ variable "force_destroy_buckets" {
   default     = false
 }
 
+variable "enable_operations_dashboard" {
+  type        = bool
+  description = "Create one custom CloudWatch dashboard. Disabled by default because dashboards beyond the account's free allowance cost money."
+  default     = false
+}

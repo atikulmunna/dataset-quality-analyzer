@@ -18,7 +18,8 @@ def test_lambda_package_is_deterministic_and_runtime_scoped(tmp_path: Path) -> N
         names = set(archive.namelist())
     assert "dqa/aws/api_handler.py" in names
     assert "dqa/aws/cost_guard.py" in names
+    assert "dqa/aws/monitoring.py" in names
+    assert "dqa/aws/observability.py" in names
     assert "dqa/web/api.py" in names
     assert "dqa/audit.py" not in names
     assert "dqa/aws/worker.py" not in names
-

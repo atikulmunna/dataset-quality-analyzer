@@ -15,6 +15,8 @@ INCLUDE = (
     ROOT / "dqa" / "aws" / "adapters.py",
     ROOT / "dqa" / "aws" / "api_handler.py",
     ROOT / "dqa" / "aws" / "cost_guard.py",
+    ROOT / "dqa" / "aws" / "monitoring.py",
+    ROOT / "dqa" / "aws" / "observability.py",
 )
 
 
@@ -40,4 +42,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

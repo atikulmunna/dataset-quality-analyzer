@@ -180,6 +180,7 @@ pytest -q
 - [docs/ADR-001-aws-alpha.md](docs/ADR-001-aws-alpha.md): accepted hosted-alpha AWS architecture and cost envelope
 - [docs/CONTAINERS.md](docs/CONTAINERS.md): production worker image and local container acceptance check
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): manual, smoke-gated AWS release and rollback procedure
+- [docs/OPERATIONS.md](docs/OPERATIONS.md): alarms, job-ID diagnostics, retention, recovery, and incident response
 - [infra/terraform/README.md](infra/terraform/README.md): reproducible, cost-capped AWS infrastructure
 - `schemas/`: machine-readable output contracts
 

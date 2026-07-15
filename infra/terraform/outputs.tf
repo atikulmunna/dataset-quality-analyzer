@@ -30,3 +30,30 @@ output "admission_enabled" {
   value = var.admission_enabled
 }
 
+output "state_table_name" {
+  value = aws_dynamodb_table.state.name
+}
+
+output "batch_queue_arn" {
+  value = aws_batch_job_queue.audit.arn
+}
+
+output "worker_log_group" {
+  value = aws_cloudwatch_log_group.worker.name
+}
+
+output "monitor_log_group" {
+  value = aws_cloudwatch_log_group.monitor.name
+}
+
+output "monitor_function_name" {
+  value = aws_lambda_function.monitor.function_name
+}
+
+output "operations_alert_topic" {
+  value = aws_sns_topic.operations.arn
+}
+
+output "operations_dashboard" {
+  value = var.enable_operations_dashboard ? aws_cloudwatch_dashboard.operations[0].dashboard_name : null
+}

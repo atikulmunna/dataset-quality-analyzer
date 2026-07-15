@@ -19,6 +19,7 @@ from dqa.ingest import extract_validated_zip
 from dqa.web.lifecycle import JobLifecycle, artifact_prefix
 
 from .adapters import DynamoJobStore
+from .observability import emit_event
 
 
 _PRESETS = {
@@ -90,20 +91,25 @@ def run_job(
     worker_id: str,
     config_root: Path,
 ) -> int:
+    started_at = time.monotonic()
+    emit_event("worker.started", job_id=job_id, worker_id=worker_id)
     store = DynamoJobStore(table)
     lifecycle = JobLifecycle(store)
     claimed = lifecycle.claim(job_id, worker_id)
     if claimed is None:
         current = store.get(job_id)
         if current is None or current.status != "running" or current.lease_until is None:
+            emit_event("worker.skipped", job_id=job_id, worker_id=worker_id, reason="not_claimable")
             return 0
         lease_until = datetime.fromisoformat(current.lease_until.replace("Z", "+00:00"))
         wait_seconds = max(0.0, (lease_until - datetime.now(timezone.utc)).total_seconds())
         time.sleep(min(wait_seconds + 1.0, 301.0))
         claimed = lifecycle.claim(job_id, worker_id)
         if claimed is None:
+            emit_event("worker.skipped", job_id=job_id, worker_id=worker_id, reason="lease_not_reclaimed")
             return 0
 
+    emit_event("worker.claimed", job_id=job_id, worker_id=worker_id, attempt=claimed.attempt)
     try:
         with tempfile.TemporaryDirectory(prefix=f"dqa-{job_id[:12]}-", dir=workspace_root) as raw:
             workspace = Path(raw)
@@ -134,9 +140,25 @@ def run_job(
                     key = prefix + path.relative_to(output).as_posix()
                     s3.upload_file(str(path), bucket, key)
             lifecycle.complete(job_id, worker_id, prefix)
+        emit_event(
+            "worker.succeeded",
+            job_id=job_id,
+            worker_id=worker_id,
+            attempt=claimed.attempt,
+            duration_seconds=round(time.monotonic() - started_at, 3),
+        )
         return 0
     except Exception as exc:
-        lifecycle.fail(job_id, worker_id, _error_code(exc))
+        error_code = _error_code(exc)
+        emit_event(
+            "worker.failed",
+            job_id=job_id,
+            worker_id=worker_id,
+            attempt=claimed.attempt,
+            duration_seconds=round(time.monotonic() - started_at, 3),
+            error_code=error_code,
+        )
+        lifecycle.fail(job_id, worker_id, error_code)
         raise
 
 

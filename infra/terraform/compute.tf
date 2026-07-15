@@ -1,6 +1,6 @@
 resource "aws_cloudwatch_log_group" "worker" {
   name              = "/aws/batch/${local.name}-worker"
-  retention_in_days = 7
+  retention_in_days = var.environment == "prod" ? 14 : 7
 }
 
 resource "aws_batch_compute_environment" "audit" {
