@@ -335,6 +335,17 @@
     <div id="dialogBody"></div>
   </dialog>
 
+  <dialog id="accessDialog" class="access-dialog" aria-labelledby="accessTitle">
+    <button class="dialog-close access-close" type="button" aria-label="Close">×</button>
+    <p class="eyebrow">Private alpha access</p>
+    <h2 id="accessTitle">Credentials are provided by the author.</h2>
+    <p class="access-copy">Request access from the project author before signing in. Public signup is disabled to prevent unapproved audit workloads and protect the project’s AWS compute budget.</p>
+    <div class="access-actions">
+      <button class="secondary-button access-close" type="button">Cancel</button>
+      <button class="primary-button" type="button" id="continueSignIn">Continue to sign in <span aria-hidden="true">→</span></button>
+    </div>
+  </dialog>
+
   <div class="progress-drawer" id="progressDrawer" aria-live="polite" hidden>
     <div class="drawer-heading"><div><p class="eyebrow">Audit in progress</p><h2 id="progressDataset">dataset.zip</h2></div><span class="live-dot">Live</span></div>
     <div class="overall-progress"><span id="progressBar"></span></div>

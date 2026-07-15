@@ -498,7 +498,14 @@
 
   $("#accountButton").addEventListener("click", () => {
     if (!isLive) return;
-    if (state.tokens) signOut(); else signIn().catch((error) => showToast("Sign-in unavailable", error.message, true));
+    if (state.tokens) signOut(); else $("#accessDialog").showModal();
+  });
+
+  $$(".access-close").forEach((button) => button.addEventListener("click", () => $("#accessDialog").close()));
+  $("#accessDialog").addEventListener("click", (event) => { if (event.target === $("#accessDialog")) $("#accessDialog").close(); });
+  $("#continueSignIn").addEventListener("click", () => {
+    $("#accessDialog").close();
+    signIn().catch((error) => showToast("Sign-in unavailable", error.message, true));
   });
 
   const fileInput = $("#datasetFile");

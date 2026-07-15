@@ -342,6 +342,10 @@ dialog { width: min(480px, calc(100% - 32px)); padding: 28px; border: 1px solid 
 dialog::backdrop { background: rgb(10 15 25 / 52%); backdrop-filter: blur(3px); }
 dialog h2 { margin-bottom: 12px; } dialog ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; } dialog li + li { margin-top: 7px; }
 .dialog-close { position: absolute; right: 15px; top: 15px; width: 31px; height: 31px; border: 0; border-radius: 9px; background: var(--surface-soft); color: var(--muted); cursor: pointer; font-size: 18px; }
+.access-dialog { max-width: 520px; }
+.access-dialog h2 { max-width: 400px; padding-right: 28px; }
+.access-copy { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.access-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
 
 .progress-drawer { position: fixed; right: 22px; bottom: 22px; z-index: 60; width: min(390px, calc(100% - 44px)); padding: 20px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface-raised); box-shadow: var(--shadow-lg); animation: drawerIn .3s ease; }
 @keyframes drawerIn { from { opacity: 0; transform: translateY(18px) scale(.98); } }
@@ -437,5 +441,6 @@ dialog::backdrop { background: rgb(18 19 15 / 62%); backdrop-filter: none; }
   .runs-toolbar { align-items: stretch; flex-direction: column; }.search-field { width: 100%; }.filter-group { overflow-x: auto; }
   .comparison-summary { grid-template-columns: 1fr; }.comparison-summary > div { border-right: 0; border-bottom: 1px solid var(--line); }
   .toast { min-width: 0; left: 16px; right: 16px; bottom: 16px; }.progress-drawer { left: 14px; right: 14px; bottom: 14px; width: auto; }
+  .access-actions { align-items: stretch; flex-direction: column-reverse; }.access-actions button { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
