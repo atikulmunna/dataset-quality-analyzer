@@ -49,6 +49,9 @@ def main() -> int:
         (workspace / "dataset" / "data.yaml").write_text(
             "path: .\ntrain: train/images\nnames: [object]\n", encoding="utf-8"
         )
+        output = workspace / "out"
+        output.mkdir()
+        output.chmod(0o777)
 
         run(
             "docker",
@@ -58,7 +61,9 @@ def main() -> int:
             "--tmpfs",
             "/tmp:rw,noexec,nosuid,size=64m",
             "--volume",
-            f"{workspace.resolve()}:/workspace",
+            f"{(workspace / 'dataset').resolve()}:/workspace/dataset:ro",
+            "--volume",
+            f"{output.resolve()}:/workspace/out:rw",
             IMAGE,
             "audit",
             "--data",
@@ -71,7 +76,7 @@ def main() -> int:
             "critical",
         )
 
-        summary = json.loads((workspace / "out" / "summary.json").read_text(encoding="utf-8"))
+        summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
         if summary["dataset"]["splits"]["train"]["images"] != 1:
             raise RuntimeError("worker smoke audit produced an unexpected summary")
 
