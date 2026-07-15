@@ -70,11 +70,11 @@
           <button class="icon-button" type="button" id="themeToggle" aria-label="Use dark theme" title="Toggle color theme">
             <span class="theme-symbol" aria-hidden="true"></span>
           </button>
-          <button class="account-button" type="button" id="accountButton" aria-label="Account menu">
-            <span class="avatar">AM</span>
+          <button class="account-button" type="button" id="accountButton" aria-label="Sign in">
+            <span class="avatar">→</span>
             <span class="account-copy">
-              <strong id="accountName">Atikul Munna</strong>
-              <small id="accountStatus">Private alpha</small>
+              <strong id="accountName">Sign in</strong>
+              <small id="accountStatus">Private alpha access</small>
             </span>
             <span class="chevron" aria-hidden="true"></span>
           </button>
@@ -82,6 +82,15 @@
       </header>
 
       <main id="main-content">
+        <aside class="access-notice" id="accessNotice" aria-labelledby="accessNoticeTitle">
+          <span class="access-notice-mark" aria-hidden="true">i</span>
+          <div>
+            <strong id="accessNoticeTitle">Invite-only testing</strong>
+            <p>Credentials are provided by the author upon request. Public signup is disabled to prevent unapproved workloads and protect the AWS compute budget.</p>
+          </div>
+          <button class="secondary-button" type="button" id="accessNoticeSignIn">Sign in <span aria-hidden="true">→</span></button>
+        </aside>
+
         <section class="view active" id="view-overview" data-view-panel="overview">
           <div class="page-heading overview-heading">
             <div>

@@ -40,6 +40,8 @@ def test_hosted_ui_has_accessible_product_surfaces_without_remote_assets() -> No
     assert "https://" not in html
     assert "Credentials are provided by the author" in html
     assert "Public signup is disabled" in html
+    assert 'id="accessNotice"' in html
+    assert '<strong id="accountName">Sign in</strong>' in html
 
 
 def test_web_build_is_exact_and_runtime_configuration_is_public_only(tmp_path: Path) -> None:

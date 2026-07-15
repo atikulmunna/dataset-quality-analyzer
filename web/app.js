@@ -136,16 +136,25 @@
   }
 
   function updateAccount() {
-    if (!isLive) return;
+    if (!isLive) {
+      $("#accessNotice").hidden = true;
+      $("#accountName").textContent = "Atikul Munna";
+      $("#accountStatus").textContent = "Private alpha";
+      $(".avatar").textContent = "AM";
+      $("#accountButton").setAttribute("aria-label", "Account menu");
+      return;
+    }
     const label = $("#environmentLabel");
     label.lastChild.textContent = " Live private alpha";
     $("#sampleDataset").hidden = true;
     if (!state.tokens) {
+      $("#accessNotice").hidden = false;
       $("#accountName").textContent = "Sign in";
       $("#accountStatus").textContent = "Required to run audits";
       $("#accountButton").setAttribute("aria-label", "Sign in");
       return;
     }
+    $("#accessNotice").hidden = true;
     const claims = tokenPayload(state.tokens.id_token || state.tokens.access_token);
     const email = String(claims.email || "Private alpha user");
     $("#accountName").textContent = email;
@@ -480,6 +489,7 @@
     updateAccount();
     showToast("Live connection unavailable", error.message, true);
   });
+  updateAccount();
 
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => navigate(item.dataset.view)));
   $$('[data-go-to]').forEach((button) => button.addEventListener("click", () => navigate(button.dataset.goTo)));
@@ -500,6 +510,7 @@
     if (!isLive) return;
     if (state.tokens) signOut(); else $("#accessDialog").showModal();
   });
+  $("#accessNoticeSignIn").addEventListener("click", () => $("#accessDialog").showModal());
 
   $$(".access-close").forEach((button) => button.addEventListener("click", () => $("#accessDialog").close()));
   $("#accessDialog").addEventListener("click", (event) => { if (event.target === $("#accessDialog")) $("#accessDialog").close(); });
