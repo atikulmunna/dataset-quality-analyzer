@@ -76,6 +76,23 @@ def main() -> int:
             "critical",
         )
 
+        # Docker's numeric non-root UID owns the bind-mounted artifact on Linux.
+        # Use a separate, explicit test-only step so the host runner can inspect it.
+        run(
+            "docker",
+            "run",
+            "--rm",
+            "--user",
+            "0:0",
+            "--entrypoint",
+            "/bin/chmod",
+            "--volume",
+            f"{output.resolve()}:/workspace/out:rw",
+            IMAGE,
+            "a+r",
+            "/workspace/out/summary.json",
+        )
+
         summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
         if summary["dataset"]["splits"]["train"]["images"] != 1:
             raise RuntimeError("worker smoke audit produced an unexpected summary")
