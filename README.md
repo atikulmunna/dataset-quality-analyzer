@@ -177,6 +177,7 @@ pytest -q
 - [FINDING_CATALOG.md](FINDING_CATALOG.md): stable finding IDs and severities
 - [wiki.md](wiki.md): implementation map for contributors
 - [BENCHMARKS.md](BENCHMARKS.md): development performance measurements and limits
+- [docs/ADR-001-aws-alpha.md](docs/ADR-001-aws-alpha.md): accepted hosted-alpha AWS architecture and cost envelope
 - `schemas/`: machine-readable output contracts
 
 ## License
