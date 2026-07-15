@@ -187,11 +187,18 @@ Resources:
                   - events:UntagResource
                   - lambda:*
                   - logs:CreateLogGroup
+                  - logs:CreateLogDelivery
                   - logs:DeleteLogGroup
+                  - logs:DeleteLogDelivery
+                  - logs:DescribeResourcePolicies
+                  - logs:GetLogDelivery
+                  - logs:ListLogDeliveries
                   - logs:ListTagsForResource
+                  - logs:PutResourcePolicy
                   - logs:PutRetentionPolicy
                   - logs:TagResource
                   - logs:UntagResource
+                  - logs:UpdateLogDelivery
                   - s3:CreateBucket
                   - s3:DeleteBucket
                   - s3:DeleteBucketPolicy
