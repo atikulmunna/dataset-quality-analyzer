@@ -15,16 +15,6 @@ from dqa.web.uploads import PresignedPost
 _ACTIVE = {"queued", "running"}
 
 
-def _attribute(value: object) -> dict[str, object]:
-    if isinstance(value, bool):
-        return {"BOOL": value}
-    if isinstance(value, int):
-        return {"N": str(value)}
-    if isinstance(value, str):
-        return {"S": value}
-    raise TypeError(f"Unsupported DynamoDB value: {type(value).__name__}")
-
-
 def _job_item(job: JobRecord) -> dict[str, object]:
     item: dict[str, object] = {"pk": f"JOB#{job.job_id}", "kind": "job"}
     for field in fields(job):
@@ -48,10 +38,6 @@ def _job_from_item(item: dict[str, object] | None) -> JobRecord | None:
                 value = int(value)  # DynamoDB resources return Decimal.
             values[field.name] = value
     return JobRecord(**values)  # type: ignore[arg-type]
-
-
-def _wire_item(item: dict[str, object]) -> dict[str, dict[str, object]]:
-    return {key: _attribute(value) for key, value in item.items()}
 
 
 def _error_code(exc: Exception) -> str | None:
@@ -85,15 +71,15 @@ class DynamoJobStore:
 
         owner_key = f"OWNER#{job.owner_id}"
         values = {
-            ":one": {"N": "1"},
-            ":max_queued": {"N": str(max_queued)},
-            ":max_running": {"N": str(max_running)},
+            ":one": 1,
+            ":max_queued": max_queued,
+            ":max_running": max_running,
         }
         operations: list[dict[str, object]] = [
             {
                 "Update": {
                     "TableName": self._table_name,
-                    "Key": {"pk": {"S": owner_key}},
+                    "Key": {"pk": owner_key},
                     "UpdateExpression": (
                         "SET #kind = :owner_kind ADD queued_count :one"
                     ),
@@ -102,13 +88,13 @@ class DynamoJobStore:
                         "AND (attribute_not_exists(running_count) OR running_count <= :max_running)"
                     ),
                     "ExpressionAttributeNames": {"#kind": "kind"},
-                    "ExpressionAttributeValues": {**values, ":owner_kind": {"S": "owner"}},
+                    "ExpressionAttributeValues": {**values, ":owner_kind": "owner"},
                 }
             },
             {
                 "Put": {
                     "TableName": self._table_name,
-                    "Item": _wire_item(_job_item(job)),
+                    "Item": _job_item(job),
                     "ConditionExpression": "attribute_not_exists(pk)",
                 }
             },
@@ -118,14 +104,12 @@ class DynamoJobStore:
                 {
                     "Put": {
                         "TableName": self._table_name,
-                        "Item": _wire_item(
-                            {
-                                "pk": f"IDEMP#{job.owner_id}#{idempotency_key}",
-                                "kind": "idempotency",
-                                "job_id": job.job_id,
-                                "ttl": int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp()),
-                            }
-                        ),
+                        "Item": {
+                            "pk": f"IDEMP#{job.owner_id}#{idempotency_key}",
+                            "kind": "idempotency",
+                            "job_id": job.job_id,
+                            "ttl": int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp()),
+                        },
                         "ConditionExpression": "attribute_not_exists(pk)",
                     }
                 }
@@ -170,27 +154,27 @@ class DynamoJobStore:
             {
                 "Put": {
                     "TableName": self._table_name,
-                    "Item": _wire_item(_job_item(replacement)),
+                    "Item": _job_item(replacement),
                     "ConditionExpression": "#version = :expected",
                     "ExpressionAttributeNames": {"#version": "version"},
-                    "ExpressionAttributeValues": {":expected": {"N": str(expected_version)}},
+                    "ExpressionAttributeValues": {":expected": expected_version},
                 }
             }
         ]
         if queued_delta or running_delta:
             updates: list[str] = []
-            values: dict[str, dict[str, object]] = {}
+            values: dict[str, object] = {}
             if queued_delta:
                 updates.append("queued_count :queued")
-                values[":queued"] = {"N": str(queued_delta)}
+                values[":queued"] = queued_delta
             if running_delta:
                 updates.append("running_count :running")
-                values[":running"] = {"N": str(running_delta)}
+                values[":running"] = running_delta
             operations.append(
                 {
                     "Update": {
                         "TableName": self._table_name,
-                        "Key": {"pk": {"S": f"OWNER#{replacement.owner_id}"}},
+                        "Key": {"pk": f"OWNER#{replacement.owner_id}"},
                         "UpdateExpression": f"ADD {', '.join(updates)}",
                         "ExpressionAttributeValues": values,
                     }
@@ -199,7 +183,7 @@ class DynamoJobStore:
             if running_delta > 0:
                 update = operations[-1]["Update"]  # type: ignore[index]
                 update["ConditionExpression"] = "attribute_not_exists(running_count) OR running_count < :max_running"  # type: ignore[index]
-                update["ExpressionAttributeValues"][":max_running"] = {"N": str(self._max_running)}  # type: ignore[index]
+                update["ExpressionAttributeValues"][":max_running"] = self._max_running  # type: ignore[index]
         try:
             self._client.transact_write_items(TransactItems=operations)
         except Exception as exc:

@@ -82,6 +82,27 @@ def test_job_store_create_is_one_transaction_with_owner_quota() -> None:
     operations = table.client.transactions[0]
     assert len(operations) == 3
     assert "queued_count < :max_queued" in operations[0]["Update"]["ConditionExpression"]  # type: ignore[index]
+    assert operations[0]["Update"]["Key"] == {"pk": "OWNER#owner-1"}  # type: ignore[index]
+    assert operations[0]["Update"]["ExpressionAttributeValues"][":one"] == 1  # type: ignore[index]
+    assert operations[1]["Put"]["Item"]["pk"] == "JOB#job-1"  # type: ignore[index]
+    assert operations[2]["Put"]["Item"]["kind"] == "idempotency"  # type: ignore[index]
+
+
+def test_job_store_lifecycle_transaction_uses_native_dynamo_values() -> None:
+    current = _job()
+    table = _Table({"JOB#job-1": _job_item(current)})
+    store = DynamoJobStore(table)
+
+    assert store.compare_and_swap(0, replace(current, status="running", version=1))
+
+    operations = table.client.transactions[0]
+    assert operations[0]["Put"]["ExpressionAttributeValues"] == {":expected": 0}  # type: ignore[index]
+    assert operations[1]["Update"]["Key"] == {"pk": "OWNER#owner-1"}  # type: ignore[index]
+    assert operations[1]["Update"]["ExpressionAttributeValues"] == {  # type: ignore[index]
+        ":queued": -1,
+        ":running": 1,
+        ":max_running": 1,
+    }
 
 
 def test_batch_queue_fails_closed_and_submits_parameterized_job() -> None:
