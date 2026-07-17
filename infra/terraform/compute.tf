@@ -45,7 +45,6 @@ resource "aws_batch_job_definition" "audit" {
     command                      = ["hosted", "--job-id", "Ref::job_id"]
     jobRoleArn                   = aws_iam_role.worker_task.arn
     executionRoleArn             = aws_iam_role.worker_execution.arn
-    user                         = "10001:10001"
     readonlyRootFilesystem       = true
     privileged                   = false
     networkConfiguration         = { assignPublicIp = "ENABLED" }

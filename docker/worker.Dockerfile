@@ -33,10 +33,11 @@ RUN addgroup -g 10001 dqa \
 COPY --from=dependencies /opt/python /opt/python
 COPY --chown=10001:10001 dqa /opt/dqa/dqa
 COPY --chown=10001:10001 dqa.yaml dqa_seg.yaml dqa_seg_low_noise.yaml /opt/dqa/configs/
+COPY --chown=0:0 docker/worker_bootstrap.py /opt/dqa/worker_bootstrap.py
 
 WORKDIR /workspace
-USER 10001:10001
 
-# AWS Batch treats this as a finite job: exit status is its health signal.
-ENTRYPOINT ["python", "-m", "dqa.worker_entry"]
+# The bootstrap only fixes the Fargate volume owner, then irreversibly drops to
+# UID/GID 10001 before importing or executing application code.
+ENTRYPOINT ["python", "/opt/dqa/worker_bootstrap.py"]
 CMD ["--help"]

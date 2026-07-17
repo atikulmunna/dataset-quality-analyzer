@@ -35,26 +35,26 @@ def main() -> int:
         capture_output=True,
         text=True,
     ).stdout.strip()
-    if image_user != "10001:10001":
-        raise RuntimeError(f"worker image has unexpected runtime user: {image_user!r}")
+    if image_user not in {"", "0", "0:0"}:
+        raise RuntimeError(f"worker bootstrap has unexpected initial user: {image_user!r}")
 
-    # Exercise the same anonymous volume boundary used by Batch/Fargate. The
-    # image directory's ownership is copied into a newly mounted volume.
-    run(
-        "docker",
-        "run",
-        "--rm",
-        "--read-only",
-        "--tmpfs",
-        "/tmp:rw,noexec,nosuid,size=16m",
-        "--mount",
-        "type=volume,destination=/workspace",
-        "--entrypoint",
-        "/bin/sh",
-        IMAGE,
-        "-c",
-        "test -w /workspace && mkdir /workspace/smoke",
-    )
+    # Exercise the same root-owned anonymous volume used by Batch/Fargate and
+    # verify the application identity after the bootstrap drops privileges.
+    runtime_user = subprocess.run(
+        [
+            "docker", "run", "--rm", "--read-only",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+            "--mount", "type=volume,destination=/workspace",
+            "--env", "DQA_VERIFY_RUNTIME_IDENTITY=1",
+            IMAGE,
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if runtime_user != "10001:10001":
+        raise RuntimeError(f"worker application has unexpected runtime user: {runtime_user!r}")
 
     with tempfile.TemporaryDirectory(prefix="dqa-container-") as raw:
         workspace = Path(raw)
@@ -78,6 +78,8 @@ def main() -> int:
             "--read-only",
             "--tmpfs",
             "/tmp:rw,noexec,nosuid,size=64m",
+            "--mount",
+            "type=volume,destination=/workspace",
             "--volume",
             f"{(workspace / 'dataset').resolve()}:/workspace/dataset:ro",
             "--volume",
