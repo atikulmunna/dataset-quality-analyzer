@@ -8,8 +8,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import zipfile
 from pathlib import Path
+
+from dqa.ingest import ArchiveValidationError, extract_validated_zip
 
 
 class RoboflowProviderError(ValueError):
@@ -20,7 +21,18 @@ _MAX_RETRIES = 3
 _BACKOFF_SECONDS = 0.8
 
 
+def _require_https_url(url: str, *, roboflow_host: bool = False) -> str:
+    parsed = urllib.parse.urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not hostname or parsed.username or parsed.password:
+        raise RoboflowProviderError("Roboflow URLs must use HTTPS without embedded credentials.")
+    if roboflow_host and hostname != "roboflow.com" and not hostname.endswith(".roboflow.com"):
+        raise RoboflowProviderError("Dataset reference must use a roboflow.com host.")
+    return url
+
+
 def _parse_reference(url: str) -> tuple[str, str, str]:
+    _require_https_url(url, roboflow_host=True)
     parsed = urllib.parse.urlparse(url)
     parts = [p for p in parsed.path.split("/") if p]
     if len(parts) < 3:
@@ -46,9 +58,10 @@ def _parse_reference(url: str) -> tuple[str, str, str]:
 
 
 def _http_json(url: str, timeout_sec: float = 30.0) -> dict:
+    _require_https_url(url)
     req = urllib.request.Request(url, headers={"User-Agent": "DQA/0.1.0"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:  # nosec B310
             data = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         raise RoboflowProviderError(f"Roboflow API HTTP {exc.code}: {exc.reason}") from exc
@@ -186,9 +199,10 @@ def _resolve_export_url(workspace: str, project: str, version: str, format_name:
 
 
 def _download_file(url: str, dest: Path, timeout_sec: float = 120.0) -> None:
+    _require_https_url(url)
     req = urllib.request.Request(url, headers={"User-Agent": "DQA/0.1.0"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:  # nosec B310
             dest.parent.mkdir(parents=True, exist_ok=True)
             with dest.open("wb") as out:
                 shutil.copyfileobj(resp, out)
@@ -262,11 +276,10 @@ def resolve_roboflow_data_yaml(
 
     download_url = _resolve_export_url(workspace, project, version, format_name, api_key)
     _download_file_with_retry(download_url, zip_path)
-    extract_dir.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(extract_dir, ignore_errors=True)
     try:
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(extract_dir)
-    except zipfile.BadZipFile as exc:
-        raise RoboflowProviderError("Downloaded artifact is not a valid ZIP archive.") from exc
+        extract_validated_zip(zip_path, extract_dir)
+    except ArchiveValidationError as exc:
+        raise RoboflowProviderError(f"Downloaded archive rejected: {exc}") from exc
 
     return _find_data_yaml(extract_dir)

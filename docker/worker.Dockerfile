@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
-# Pin the linux/amd64 manifest used by the initial us-east-1 Fargate worker.
-ARG PYTHON_IMAGE=python:3.11-slim-bookworm@sha256:28255a3ace7eb4c48bc1b57b90af29e1bc82b4fd6c60614a8e3dce61b87ff941
+# Pin the linux/amd64 manifest. Alpine avoids the unused Perl runtime that
+# carried unfixed critical/high findings in the previous Debian base.
+ARG PYTHON_IMAGE=python:3.11.15-alpine3.24@sha256:bbc78bdb39abbac9225c0f50643c4313e6b06ba1cf7d1dcc34249f13cecaa3d7
 
 FROM ${PYTHON_IMAGE} AS dependencies
 COPY requirements/worker.lock /tmp/worker.lock
@@ -23,8 +24,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/opt/dqa:/opt/python \
     HOME=/tmp
 
-RUN groupadd --gid 10001 dqa \
-    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin dqa \
+RUN addgroup -g 10001 dqa \
+    && adduser -D -H -u 10001 -G dqa -s /sbin/nologin dqa \
     && python -m pip uninstall --yes pip setuptools wheel \
     && rm -rf /root/.cache /usr/local/lib/python3.11/site-packages/pip* /usr/local/lib/python3.11/site-packages/setuptools*
 

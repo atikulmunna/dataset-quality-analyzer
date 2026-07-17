@@ -316,6 +316,7 @@ The CLI and hosted private alpha are functional. The hosted service is intention
 - [Container contract](docs/CONTAINERS.md): hardened production worker image
 - [Deployment runbook](docs/DEPLOYMENT.md): release, smoke gate, and rollback
 - [Operations runbook](docs/OPERATIONS.md): alarms, diagnostics, retention, recovery, and incidents
+- [Security policy and review](SECURITY.md): private reporting, threat controls, findings, and accepted alpha risks
 - [Hosted frontend](web/README.md): preview/live modes and browser security boundary
 - [Terraform infrastructure](infra/terraform/README.md): reproducible, cost-capped AWS stack
 - [`schemas/`](schemas/): machine-readable output contracts

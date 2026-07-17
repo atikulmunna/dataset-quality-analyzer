@@ -76,3 +76,27 @@ def test_live_browser_uses_pkce_and_owner_api_without_secrets() -> None:
     assert 'apiFetch("/jobs?limit=50")' in script
     assert "/artifacts`" in script
     assert "client_secret" not in script
+
+
+def test_mobile_ui_uses_phone_navigation_and_card_tables() -> None:
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    styles = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+    script = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+    assert 'name="viewport" content="width=device-width, initial-scale=1"' in html
+    assert 'class="mobile-brand"' in html
+    assert "@media (max-width: 620px)" in styles
+    assert "env(safe-area-inset-bottom)" in styles
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in styles
+    assert ".table-wrap tbody tr" in styles
+    assert 'data-label="Status"' in script
+
+
+def test_cloudfront_adds_browser_security_headers() -> None:
+    terraform = (ROOT / "infra" / "terraform" / "storage.tf").read_text(encoding="utf-8")
+
+    assert 'resource "aws_cloudfront_response_headers_policy" "ui_security"' in terraform
+    assert "frame-ancestors 'none'" in terraform
+    assert 'frame_option = "DENY"' in terraform
+    assert 'header   = "Permissions-Policy"' in terraform
+    assert "response_headers_policy_id = aws_cloudfront_response_headers_policy.ui_security.id" in terraform

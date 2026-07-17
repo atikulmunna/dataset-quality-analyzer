@@ -6,7 +6,9 @@ import urllib.error
 import zipfile
 from pathlib import Path
 
-from dqa.providers.roboflow import resolve_roboflow_data_yaml
+import pytest
+
+from dqa.providers.roboflow import RoboflowProviderError, resolve_roboflow_data_yaml
 
 
 class _FakeResponse(io.BytesIO):
@@ -179,4 +181,56 @@ def test_roboflow_error_includes_payload_keys(monkeypatch, tmp_path: Path) -> No
         assert "foo" in msg
     else:
         raise AssertionError("Expected resolver to fail when no download URL is present")
+
+
+def test_roboflow_reference_requires_https_and_roboflow_host(tmp_path: Path) -> None:
+    for url in (
+        "http://universe.roboflow.com/workspace/project/1",
+        "https://example.com/workspace/project/1",
+        "https://user:secret@universe.roboflow.com/workspace/project/1",
+    ):
+        with pytest.raises(RoboflowProviderError):
+            resolve_roboflow_data_yaml(url, tmp_path, api_key="dummy-key")
+
+
+def test_roboflow_rejects_insecure_download_url(monkeypatch, tmp_path: Path) -> None:
+    payload = {"download": "http://storage.example/dataset.zip"}
+    monkeypatch.setattr(
+        "dqa.providers.roboflow.urllib.request.urlopen",
+        lambda *_args, **_kwargs: _FakeResponse(json.dumps(payload).encode("utf-8")),
+    )
+    monkeypatch.setattr("dqa.providers.roboflow.time.sleep", lambda _x: None)
+
+    with pytest.raises(RoboflowProviderError, match="must use HTTPS"):
+        resolve_roboflow_data_yaml(
+            "https://universe.roboflow.com/workspace/project/1",
+            tmp_path,
+            api_key="dummy-key",
+            use_cache=False,
+        )
+
+
+def test_roboflow_rejects_archive_path_traversal(monkeypatch, tmp_path: Path) -> None:
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("../outside.txt", "unsafe")
+        zf.writestr("dataset/data.yaml", "names: [a]\n")
+    responses = [
+        _FakeResponse(json.dumps({"download": "https://storage.example/dataset.zip"}).encode("utf-8")),
+        _FakeResponse(archive.getvalue()),
+    ]
+    monkeypatch.setattr(
+        "dqa.providers.roboflow.urllib.request.urlopen",
+        lambda *_args, **_kwargs: responses.pop(0),
+    )
+
+    with pytest.raises(RoboflowProviderError, match="unsafe path"):
+        resolve_roboflow_data_yaml(
+            "https://universe.roboflow.com/workspace/project/1",
+            tmp_path,
+            api_key="dummy-key",
+            use_cache=False,
+        )
+
+    assert not (tmp_path / "outside.txt").exists()
 

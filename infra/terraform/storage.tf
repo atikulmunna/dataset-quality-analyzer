@@ -79,6 +79,40 @@ resource "aws_cloudfront_origin_access_control" "ui" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_response_headers_policy" "ui_security" {
+  name = "${local.name}-ui-security"
+
+  security_headers_config {
+    content_security_policy {
+      content_security_policy = "default-src 'none'; base-uri 'none'; connect-src 'self' https://*.amazonaws.com https://*.amazoncognito.com; font-src 'self'; form-action 'self' https://*.amazoncognito.com; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+      override                = true
+    }
+    content_type_options { override = true }
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+    referrer_policy {
+      referrer_policy = "no-referrer"
+      override        = true
+    }
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = false
+      preload                    = false
+      override                   = true
+    }
+  }
+
+  custom_headers_config {
+    items {
+      header   = "Permissions-Policy"
+      value    = "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+      override = true
+    }
+  }
+}
+
 resource "aws_cloudfront_distribution" "ui" {
   enabled             = true
   is_ipv6_enabled     = true
@@ -93,11 +127,12 @@ resource "aws_cloudfront_distribution" "ui" {
   }
 
   default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "ui-s3"
-    viewer_protocol_policy = "redirect-to-https"
-    compress               = true
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    target_origin_id           = "ui-s3"
+    viewer_protocol_policy     = "redirect-to-https"
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.ui_security.id
+    compress                   = true
     forwarded_values {
       query_string = false
       cookies { forward = "none" }

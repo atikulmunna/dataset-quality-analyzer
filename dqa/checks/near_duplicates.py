@@ -15,7 +15,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 def _fp(*parts: str) -> str:
     raw = "|".join(parts).encode("utf-8")
-    return "sha1:" + hashlib.sha1(raw).hexdigest()
+    return "sha1:" + hashlib.sha1(raw, usedforsecurity=False).hexdigest()
 
 
 def _ahash(image_path: Path, size: int = 8) -> int:

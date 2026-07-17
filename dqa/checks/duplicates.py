@@ -9,7 +9,7 @@ from ..models import Finding
 
 def _fp(*parts: str) -> str:
     raw = "|".join(parts).encode("utf-8")
-    return "sha1:" + hashlib.sha1(raw).hexdigest()
+    return "sha1:" + hashlib.sha1(raw, usedforsecurity=False).hexdigest()
 
 
 def run_exact_duplicates(index_payload: dict[str, Any]) -> list[Finding]:
