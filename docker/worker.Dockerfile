@@ -26,6 +26,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 RUN addgroup -g 10001 dqa \
     && adduser -D -H -u 10001 -G dqa -s /sbin/nologin dqa \
+    && install -d -o 10001 -g 10001 -m 0700 /workspace \
     && python -m pip uninstall --yes pip setuptools wheel \
     && rm -rf /root/.cache /usr/local/lib/python3.11/site-packages/pip* /usr/local/lib/python3.11/site-packages/setuptools*
 

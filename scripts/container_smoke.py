@@ -38,6 +38,24 @@ def main() -> int:
     if image_user != "10001:10001":
         raise RuntimeError(f"worker image has unexpected runtime user: {image_user!r}")
 
+    # Exercise the same anonymous volume boundary used by Batch/Fargate. The
+    # image directory's ownership is copied into a newly mounted volume.
+    run(
+        "docker",
+        "run",
+        "--rm",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,noexec,nosuid,size=16m",
+        "--mount",
+        "type=volume,destination=/workspace",
+        "--entrypoint",
+        "/bin/sh",
+        IMAGE,
+        "-c",
+        "test -w /workspace && mkdir /workspace/smoke",
+    )
+
     with tempfile.TemporaryDirectory(prefix="dqa-container-") as raw:
         workspace = Path(raw)
         images = workspace / "dataset" / "train" / "images"
