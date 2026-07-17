@@ -323,7 +323,7 @@
       : {
           eyebrow: "Private alpha",
           title: "Retention & privacy",
-          body: "<ul><li>Source archives expire after processing, normally within 24–48 hours.</li><li>Successful reports remain available for seven days.</li><li>Job metadata expires after 30 days.</li><li>Workers are isolated, source files are read-only, and another account cannot access your jobs.</li></ul>",
+          body: "<ul><li>Source archives expire after processing, normally within 24–48 hours.</li><li>Successful reports remain available for seven days; job metadata expires after 30 days.</li><li>Workers are isolated, source files are read-only, and another account cannot access your jobs.</li><li>Do not upload regulated or unauthorized data. Use the local CLI when data must stay on your machine.</li><li>For deletion or access help, contact <strong>atikul.munna@northsouth.edu</strong> with the job ID—never a password or dataset.</li></ul>",
         };
     $("#dialogEyebrow").textContent = content.eyebrow;
     $("#dialogTitle").textContent = content.title;

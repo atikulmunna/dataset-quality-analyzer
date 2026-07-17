@@ -81,6 +81,8 @@ Current alpha limits:
 
 Source uploads expire automatically, failed/cancelled results have shorter retention, and old job metadata is removed. Do not treat the hosted alpha as permanent dataset or report storage.
 
+Before uploading, read the [hosted alpha privacy notice](PRIVACY.md). Access, deletion help, and issue-reporting expectations are in [private alpha support](SUPPORT.md).
+
 ## Local quick start
 
 ### Requirements
@@ -316,6 +318,8 @@ The CLI and hosted private alpha are functional. The hosted service is intention
 - [Container contract](docs/CONTAINERS.md): hardened production worker image
 - [Deployment runbook](docs/DEPLOYMENT.md): release, smoke gate, and rollback
 - [Operations runbook](docs/OPERATIONS.md): alarms, diagnostics, retention, recovery, and incidents
+- [Private alpha launch checklist](docs/LAUNCH-CHECKLIST.md): security, load, cost, telemetry, and rollback evidence
+- [Hosted alpha privacy notice](PRIVACY.md) and [support policy](SUPPORT.md)
 - [Security policy and review](SECURITY.md): private reporting, threat controls, findings, and accepted alpha risks
 - [Hosted frontend](web/README.md): preview/live modes and browser security boundary
 - [Terraform infrastructure](infra/terraform/README.md): reproducible, cost-capped AWS stack

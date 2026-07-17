@@ -90,6 +90,8 @@ def test_mobile_ui_uses_phone_navigation_and_card_tables() -> None:
     assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in styles
     assert ".table-wrap tbody tr" in styles
     assert 'data-label="Status"' in script
+    assert "atikul.munna@northsouth.edu" in script
+    assert "Do not upload regulated or unauthorized data" in script
 
 
 def test_cloudfront_adds_browser_security_headers() -> None:
@@ -106,3 +108,4 @@ def test_api_role_can_query_the_owner_jobs_index() -> None:
     terraform = (ROOT / "infra" / "terraform" / "iam.tf").read_text(encoding="utf-8")
 
     assert '"${aws_dynamodb_table.state.arn}/index/*"' in terraform
+    assert "aws_batch_job_definition.audit.arn" in terraform

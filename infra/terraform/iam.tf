@@ -47,10 +47,13 @@ resource "aws_iam_role_policy" "api" {
         Resource = [aws_batch_job_queue.audit.arn, aws_batch_job_definition.audit.arn]
       },
       {
-        Sid      = "TagSubmittedJobs"
-        Effect   = "Allow"
-        Action   = "batch:TagResource"
-        Resource = "arn:aws:batch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:job/*"
+        Sid    = "TagSubmittedJobs"
+        Effect = "Allow"
+        Action = "batch:TagResource"
+        Resource = [
+          aws_batch_job_definition.audit.arn,
+          "arn:aws:batch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:job/*"
+        ]
       },
       {
         Sid      = "PresignedOwnerUploads"
