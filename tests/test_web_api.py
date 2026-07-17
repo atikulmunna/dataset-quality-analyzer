@@ -167,6 +167,24 @@ def test_submit_records_and_enqueues_without_running_audit() -> None:
     assert events.events[-1].outcome == "allowed"
 
 
+def test_submit_failure_is_bounded_and_observable(caplog) -> None:
+    service, store, queue, events = _service(queue_failure=True)
+
+    response = handle_request(
+        _event("POST", "/jobs", body={"dataset_key": "uploads/user-1/dataset.zip"}),
+        service,
+        TestRateLimiter(),
+    )
+
+    assert response["statusCode"] == 503
+    assert _body(response) == {"error": "enqueue_unavailable"}
+    assert store.jobs["job-1"].status == "failed"
+    assert not queue.submitted
+    assert events.events[-1].action == "job.submit"
+    assert events.events[-1].reason == "service_unavailable"
+    assert "Job submission failed" in caplog.text
+
+
 def test_status_is_owner_scoped_and_hides_cross_user_job() -> None:
     service, _, _, events = _service()
     service.submit("user-1", JobRequest(dataset_key="uploads/user-1/dataset.zip"))

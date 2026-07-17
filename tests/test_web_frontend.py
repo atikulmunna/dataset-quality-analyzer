@@ -100,3 +100,9 @@ def test_cloudfront_adds_browser_security_headers() -> None:
     assert 'frame_option = "DENY"' in terraform
     assert 'header   = "Permissions-Policy"' in terraform
     assert "response_headers_policy_id = aws_cloudfront_response_headers_policy.ui_security.id" in terraform
+
+
+def test_api_role_can_query_the_owner_jobs_index() -> None:
+    terraform = (ROOT / "infra" / "terraform" / "iam.tf").read_text(encoding="utf-8")
+
+    assert '"${aws_dynamodb_table.state.arn}/index/*"' in terraform

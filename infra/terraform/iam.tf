@@ -35,7 +35,10 @@ resource "aws_iam_role_policy" "api" {
           "dynamodb:UpdateItem",
           "dynamodb:TransactWriteItems"
         ]
-        Resource = aws_dynamodb_table.state.arn
+        Resource = [
+          aws_dynamodb_table.state.arn,
+          "${aws_dynamodb_table.state.arn}/index/*"
+        ]
       },
       {
         Sid      = "SubmitOnlyDqaJobs"

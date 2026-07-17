@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import stat
 import zipfile
 from pathlib import Path
@@ -98,3 +99,23 @@ def test_extraction_refuses_existing_destination(tmp_path: Path) -> None:
 
     with pytest.raises(ArchiveValidationError, match="must not already exist"):
         extract_validated_zip(archive, destination)
+
+
+def test_storage_exhaustion_leaves_no_partial_destination(tmp_path: Path, monkeypatch) -> None:
+    archive = _zip(tmp_path / "dataset.zip", {"train/a.txt": b"data"})
+    destination = tmp_path / "dataset"
+    real_open = Path.open
+
+    def no_space(path: Path, mode: str = "r", *args, **kwargs):
+        if mode == "xb" and path.name == "a.txt":
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", no_space)
+
+    with pytest.raises(OSError) as failure:
+        extract_validated_zip(archive, destination)
+
+    assert failure.value.errno == errno.ENOSPC
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".dataset.*"))

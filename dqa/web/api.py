@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from .artifacts import JobArtifactService
 from .jobs import IdempotencyConflictError, JobInputError, JobQuotaError, JobRequest, JobService
 from .lifecycle import JobLifecycle
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -72,6 +76,13 @@ def handle_request(
         except (JobInputError, TypeError, ValueError) as exc:
             return ApiResponse(400, {"error": "invalid_request", "message": str(exc)}).to_lambda()
         except Exception:
+            jobs.record_event(
+                "job.submit",
+                "failed",
+                owner_id=auth.owner_id,
+                reason="service_unavailable",
+            )
+            logger.exception("Job submission failed before an API response could be created.")
             return ApiResponse(503, {"error": "enqueue_unavailable"}).to_lambda()
         return ApiResponse(202, {"job": job.to_dict()}).to_lambda()
 
