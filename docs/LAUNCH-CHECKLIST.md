@@ -28,8 +28,8 @@ This checklist is the release record for Tasks 16–18. A checked item is backed
 - [x] Simulated storage exhaustion leaves neither a destination nor a partial temporary extraction.
 - [x] API submission failure returns a bounded `503` and now produces an operator diagnostic.
 - [x] Concurrent authenticated history requests exposed and led to repair of missing DynamoDB GSI access.
-- [ ] One tiny hosted audit completes, produces downloadable artifacts, and permits source deletion.
-- [ ] Measured hosted task duration and projected per-audit cost are recorded below.
+- [x] One tiny hosted audit completed in 26.67 seconds end to end, indexed one image, published five downloadable artifacts, and returned `204` for source deletion (job `c0508c34f1674f2c8a3b01b386493635`).
+- [x] The successful Batch task ran for 25.015 seconds; the projected billed worker cost is recorded below.
 
 ## Controlled-launch gate
 
@@ -38,15 +38,19 @@ This checklist is the release record for Tasks 16–18. A checked item is backed
 - [x] Admission is fail-closed in infrastructure and can be disabled independently of the UI/API.
 - [x] Monthly and project budgets, a USD 40 workload cutoff, global worker concurrency 1, and short retention are active.
 - [x] Six CloudWatch alarms exist for failure, backlog, runtime, storage, API 5xx, and monitor errors.
-- [ ] Live telemetry is healthy after the hosted acceptance audit.
-- [ ] Immutable-SHA rollback is executed and the final release is restored.
-- [ ] Final full regression suite and clean-worktree check pass.
+- [x] Live telemetry captured RUNNABLE, STARTING, RUNNING, and SUCCEEDED events with the same job ID and a 25.015-second runtime; the intentional pre-fix failures also exercised the API/job-failure alarms.
+- [x] Immutable-SHA rollback deployed `33634e8…` in run `29575979519`; run `29576160983` then restored verified release `8b157e9…` and passed its live smoke gate.
+- [x] Final full regression suite passed with 134 tests; the release commit was clean before this evidence-only documentation update.
 
 ## Cost evidence
 
-The worker requests 2 vCPU and 4 GiB memory. AWS bills Linux/x86 Fargate per second with a one-minute minimum; the included 20 GiB ephemeral storage has no additional storage charge. A public IPv4 address is charged only while the one-shot task exists. Control-plane requests and short-lived storage are usage-based and expected to remain within free allowances or below one cent per small alpha audit.
+The worker requests 2 vCPU and 4 GiB memory. AWS bills Linux/x86 Fargate per second with a one-minute minimum; the included 20 GiB ephemeral storage has no additional storage charge. At the published `us-east-1` rates, the minimum-minute compute charge is:
 
-Measured values and the final sign-off are appended after the hosted acceptance run.
+`60 × ((2 × $0.000011244) + (4 × $0.000001235)) = $0.00164568`
+
+The task's public IPv4 address exists only with the one-shot task. Even pessimistically treating the published USD 0.005/hour IPv4 rate as a full hour, the measured audit remains below USD 0.007 before tiny API, Lambda, DynamoDB, log, request, and storage usage or any applicable free allowance. Ten similar audits would therefore remain far below USD 1; the USD 40 admission cutoff and USD 50 project ceiling remain unchanged.
+
+AWS Budgets reported USD 0 actual spend for both the USD 5 monthly and USD 50 project budgets immediately after testing; billing data can lag and is not used as a real-time hard cap.
 
 ## Decision
 

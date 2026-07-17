@@ -296,7 +296,7 @@ The DQA audit workflow also performs a smoke audit, validates the generated arti
 
 ## Project status
 
-The CLI and hosted private alpha are functional. The hosted service is intentionally access-controlled while security/abuse review and load/cost validation continue. Public signup and broader availability should only be considered after those gates pass and the compute budget is deliberately increased.
+The CLI and hosted private alpha are functional. Security/abuse, maximum-size, failure, cost, telemetry, and rollback gates are complete; the evidence is recorded in the [private alpha launch checklist](docs/LAUNCH-CHECKLIST.md). The service remains intentionally access-controlled so selected-tester behavior and spend can be observed before any separate decision about broader availability.
 
 ## Troubleshooting
 

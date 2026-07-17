@@ -19,7 +19,7 @@ Security fixes target the current `main` branch and the single deployed private-
 - Uploads use exact owner-scoped object keys, exact content-length policies, SHA-256 checksums, server-side encryption, and 15-minute presigned POSTs.
 - Workers receive a job identifier rather than a command, filesystem path, URL, or user credential.
 - ZIP ingestion rejects traversal, absolute paths, links, encryption, unsupported methods, duplicates, excessive entries, excessive expansion, and metadata/actual-size mismatches.
-- The Batch worker runs as UID/GID `10001`, without privilege, with a read-only root filesystem, no inbound network rules, and one global worker maximum.
+- The Batch worker uses a minimal volume bootstrap, then clears supplementary groups and permanently drops to UID/GID `10001` before importing or running DQA. The application has a read-only root filesystem, no inbound network rules, and one global worker maximum.
 - Source data and artifacts expire automatically. Downloads use five-minute owner-checked presigned URLs.
 - Deployment credentials are short-lived GitHub OIDC sessions; third-party Actions and container inputs are pinned to immutable digests.
 
@@ -41,9 +41,9 @@ Review evidence:
 - `pip-audit` against `requirements/worker.lock`: no known vulnerabilities.
 - Bandit across `dqa/`: no medium or high findings; three low findings are intentional malformed-COCO skips.
 - Trivy against the final worker image: zero OS or Python-package vulnerabilities.
-- Container smoke: real audit succeeds as non-root with a read-only root filesystem.
+- Container smoke: the mounted workspace is prepared, the runtime identity is verified as UID/GID `10001`, and a real audit succeeds with a read-only root filesystem.
 - Terraform validation: valid configuration.
-- Live AWS inspection: private S3 buckets, restricted CORS, encrypted storage, scoped JWT routes, API throttling, no worker ingress, HTTPS-only egress, immutable/scanned ECR, healthy alarms, enabled admission guard, USD 5 monthly budget, and USD 50 project budget.
+- Live AWS inspection: private S3 buckets, restricted CORS, encrypted storage, scoped JWT routes, API throttling, no worker ingress, HTTPS-only egress, immutable/scanned ECR, exercised alarms, enabled admission guard, USD 5 monthly budget, and USD 50 project budget.
 - Secret-pattern review: matches are limited to defensive code/tests; no AWS access keys, private keys, client secrets, or test-user passwords are tracked.
 
 No unresolved critical or high finding is accepted for the private alpha.
